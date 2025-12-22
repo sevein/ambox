@@ -16,6 +16,7 @@ Workers log events into a shared queue while the pool runs a background thread
 import logging
 import logging.handlers
 import multiprocessing
+import os
 import threading
 import time
 from multiprocessing.synchronize import Event
@@ -105,6 +106,7 @@ class WorkerPool:
     WORKER_RESTART_DELAY = 1.0
 
     def __init__(self) -> None:
+        self._parent_pid = os.getpid()
         self.log_queue: LogQueue = multiprocessing.Queue()
         self.shutdown_event = multiprocessing.Event()
         self.workers: list[multiprocessing.Process] = []
@@ -139,8 +141,11 @@ class WorkerPool:
 
     def stop(self) -> None:
         self.shutdown_event.set()
+        if os.getpid() != self._parent_pid:
+            return
         if self.pool_maintainance_thread is not None:
-            self.pool_maintainance_thread.join()
+            if self.pool_maintainance_thread is not threading.current_thread():
+                self.pool_maintainance_thread.join()
 
         for worker in self.workers:
             if worker.is_alive():
