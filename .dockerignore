@@ -9,6 +9,12 @@
 !/COPYRIGHT
 !/TRADEMARK
 
+# Includes only used by ambox.
+!/hack/box/**
+!/hack/submodules/archivematica-storage-service/**
+!/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV/**
+!/hack/submodules/archivematica-sampledata/SampleTransfers/Images/**
+
 # Exclude
 src/archivematica/dashboard/frontend/node_modules
 src/archivematica/dashboard/media/js/build

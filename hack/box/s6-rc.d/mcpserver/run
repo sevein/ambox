@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+export DJANGO_SETTINGS_MODULE=archivematica.MCPServer.settings.common
+
+: "${ARCHIVEMATICA_MCPSERVER_SEARCH_ENABLED:=false}"
+export ARCHIVEMATICA_MCPSERVER_SEARCH_ENABLED
+
+: "${ARCHIVEMATICA_MCPSERVER_CLIENT_HOST:=localhost}"
+export ARCHIVEMATICA_MCPSERVER_CLIENT_HOST
+
+: "${PYTHONPATH:=/src/src}"
+export PYTHONPATH
+cd /src
+exec s6-setuidgid archivematica \
+  python3 -m archivematica.MCPServer.archivematicaMCP

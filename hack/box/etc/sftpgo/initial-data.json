@@ -1,0 +1,25 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "status": 1,
+      "username": "archivematica",
+      "password": "12345",
+      "public_keys": [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMsk/SqNiQBndlq/CpfBscHvKC4bsZezSv0fDzsYlBTI archivematica"
+      ],
+      "has_password": true,
+      "home_dir": "/home/archivematica/transfers",
+      "permissions": { "/": ["*"] }
+    }
+  ],
+  "admins": [
+    {
+      "id": 1,
+      "status": 1,
+      "username": "admin",
+      "password": "$2a$10$3OttaDDy1VIJbMTu80zNP.jx5UQQw2gwtN4QZXIcBIW8870j4koDi",
+      "permissions": ["*"]
+    }
+  ]
+}

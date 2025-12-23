@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+export SFTPGO_CONFIG_DIR=/var/lib/sftpgo
+export SFTPGO_CONFIG_FILE=/etc/sftpgo/sftpgo.json
+export SFTPGO_LOADDATA_FROM=/etc/sftpgo/initial-data.json
+export SFTPGO_LOG_FILE_PATH=
+export SFTPGO_LOG_LEVEL=warn
+
+load_data_args=
+if [ ! -f "$SFTPGO_CONFIG_DIR/sftpgo.db" ]; then
+  load_data_args="--loaddata-from $SFTPGO_LOADDATA_FROM"
+fi
+
+exec s6-setuidgid archivematica \
+  sftpgo serve --config-dir "$SFTPGO_CONFIG_DIR" --config-file "$SFTPGO_CONFIG_FILE" $load_data_args

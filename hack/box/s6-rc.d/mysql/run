@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+# Initialize datadir if empty
+DATA_DIR=/var/lib/mysql
+if [ ! -d "$DATA_DIR/mysql" ]; then
+  if command -v mariadb-install-db >/dev/null 2>&1; then
+    mariadb-install-db --user=mysql --datadir="$DATA_DIR" >/dev/null
+  elif command -v mysqld >/dev/null 2>&1; then
+    # mysql_install_db is not shipped by default on newer MySQL packages.
+    # Use the server binary to initialize the data directory instead.
+    mysqld --initialize-insecure --user=mysql --datadir="$DATA_DIR" >/dev/null
+  else
+    echo "mysqld not found; cannot initialize MySQL data directory" >&2
+    exit 1
+  fi
+fi
+# Ensure the socket dir exists with group access for mysql socket clients.
+install -d -o mysql -g mysql -m 0775 /run/mysqld
+exec s6-setuidgid mysql \
+  mysqld --datadir="$DATA_DIR" --skip-networking=0 \
+    --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
