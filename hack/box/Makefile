@@ -11,7 +11,8 @@ buildx-publish:
 		--progress=plain \
 		--platform linux/amd64,linux/arm64 \
 		--push \
-		-t $(IMAGE):$(TAG) \
+		-t ghcr.io/sevein/ambox:$(TAG) \
+		-t artefactual/ambox:$(TAG) \
 		-f Dockerfile \
 		$(CURDIR)/../../
 

@@ -1,3 +1,15 @@
+> [!IMPORTANT]
+> This is a fork of the [Archivematica repository] used to build **ambox**, a
+> single-container distribution of Archivematica and its dependencies for local
+> testing and development, or lightweight use cases.
+>
+> See [hack/box] for more information.
+
+[Archivematica repository]: https://github.com/artefactual/archivematica
+[hack/box]: hack/box/README.md
+
+---
+
 # [Archivematica]
 
 By [Artefactual]
