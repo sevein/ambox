@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="hack/box/logo.jpeg"/>
+</p>
+
 > [!IMPORTANT]
 > This is a fork of the [Archivematica repository] used to build **ambox**, a
 > single-container distribution of Archivematica and its dependencies for local
