@@ -6,7 +6,7 @@ export PYTHONPATH="/src/hack/submodules/archivematica-storage-service/src:${PYTH
 : "${DJANGO_SETTINGS_MODULE:=$SS_DJANGO_SETTINGS_MODULE}"
 export DJANGO_SETTINGS_MODULE
 export SS_GUNICORN_BIND=0.0.0.0:8001
-export SS_GUNICORN_ACCESSLOG=-
+export SS_GUNICORN_ACCESSLOG=/dev/null
 export SS_GUNICORN_ERRORLOG=-
 
 : "${SS_DB_URL:=mysql://archivematica:demo@localhost/SS}"
