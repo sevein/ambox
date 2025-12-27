@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: "Check out repository"
         uses: "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8" # v6.0.1
+        with:
+          submodules: recursive
       - name: "Create local tag"
         run: git tag ${{ github.event.inputs.version }}
       - name: "Set up QEMU"
