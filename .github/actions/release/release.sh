@@ -130,47 +130,47 @@ fi
 
 release_json="$(gh release list --repo "$repo" --limit 10 --json tagName)"
 previous_tag="$(jq -r --arg current "$current_tag" 'map(.tagName) | map(select(. != $current)) | .[0] // empty' <<<"$release_json")"
-
-if [[ -z "$previous_tag" ]]; then
-  echo "Could not determine previous release tag for $current_tag" >&2
-  exit 1
-fi
-
-if ! git rev-parse "$current_tag^{commit}" >/dev/null 2>&1; then
-  echo "Tag $current_tag is not available locally" >&2
-  exit 1
-fi
-
-if ! git rev-parse "$previous_tag^{commit}" >/dev/null 2>&1; then
-  echo "Tag $previous_tag is not available locally" >&2
-  exit 1
-fi
-
-compare_url="https://github.com/${repo}/compare/${previous_tag}...${current_tag}"
 notes_file="$(mktemp -t release-notes.XXXXXX)"
 
-commit_lines=()
-while IFS=$'\t' read -r sha title_line login name; do
-  [[ -z "$sha" ]] && continue
-  author="$name"
-  if [[ -n "$login" ]]; then
-    author="@$login"
+if [[ -z "$previous_tag" ]]; then
+  : >"$notes_file"
+  echo "No previous release tag found for $current_tag; creating empty release notes"
+else
+  if ! git rev-parse "$current_tag^{commit}" >/dev/null 2>&1; then
+    echo "Tag $current_tag is not available locally" >&2
+    exit 1
   fi
-  commit_lines+=("* $sha: $title_line ($author)")
-done < <(gh api "repos/${repo}/compare/${previous_tag}...${current_tag}" \
-  --jq '.commits[] | [.sha[0:7], (.commit.message | split("\n")[0]), (.author.login // ""), (.commit.author.name // "")] | @tsv')
 
-if [[ ${#commit_lines[@]} -eq 0 ]]; then
-  commit_lines+=("* No commits between ${previous_tag} and ${current_tag}")
+  if ! git rev-parse "$previous_tag^{commit}" >/dev/null 2>&1; then
+    echo "Tag $previous_tag is not available locally" >&2
+    exit 1
+  fi
+
+  compare_url="https://github.com/${repo}/compare/${previous_tag}...${current_tag}"
+
+  commit_lines=()
+  while IFS=$'\t' read -r sha title_line login name; do
+    [[ -z "$sha" ]] && continue
+    author="$name"
+    if [[ -n "$login" ]]; then
+      author="@$login"
+    fi
+    commit_lines+=("* $sha: $title_line ($author)")
+  done < <(gh api "repos/${repo}/compare/${previous_tag}...${current_tag}" \
+    --jq '.commits[] | [.sha[0:7], (.commit.message | split("\n")[0]), (.author.login // ""), (.commit.author.name // "")] | @tsv')
+
+  if [[ ${#commit_lines[@]} -eq 0 ]]; then
+    commit_lines+=("* No commits between ${previous_tag} and ${current_tag}")
+  fi
+
+  {
+    echo "## Changelog"
+    echo
+    printf '%s\n' "${commit_lines[@]}"
+    echo
+    echo "${compare_url}"
+  } >"$notes_file"
 fi
-
-{
-  echo "## Changelog"
-  echo
-  printf '%s\n' "${commit_lines[@]}"
-  echo
-  echo "${compare_url}"
-} >"$notes_file"
 
 cmd=(gh release create "$current_tag" --title "$title" --notes-file "$notes_file" --repo "$repo")
 
