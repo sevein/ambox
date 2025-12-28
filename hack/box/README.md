@@ -112,9 +112,10 @@ Build and run the image locally:
 
     make run
 
-Publishing is not wired in CI yet. To build and push a multi-arch image:
+To create a new release, update the version number and run the release workflow
+command below (example uses v1.0.1):
 
-    make buildx-publish
+    gh workflow run release.yml -f version=1.0.1
 
 This is the service dependency graph bundled in the container image, as defined
 in `hack/box/s6-rc.d/*/dependencies`. Arrows point from prerequisite →
