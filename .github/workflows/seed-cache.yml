@@ -28,12 +28,16 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: "Check for existing seed cache"
+      - name: "Check for existing multi-arch seed cache"
         id: seed-cache-check
         run: |
           tag="ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${AM_SEED_KEY}"
           if docker manifest inspect "$tag" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
+            if docker manifest inspect "$tag" | grep -q "linux/amd64" && docker manifest inspect "$tag" | grep -q "linux/arm64"; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
