@@ -1,0 +1,81 @@
+name: "Seed cache"
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  seed-cache:
+    name: "Build seed cache"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "Check out repository"
+        uses: "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8" # v6.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: "Set up buildx"
+        uses: "docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f" # v3.12.0
+      - name: "Compute seed cache key"
+        run: |
+          echo "AM_SEED_KEY=$(./hack/box/scripts/seed/key.sh)" >> "$GITHUB_ENV"
+      - name: "Log in to GHCR"
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Check for existing seed cache"
+        id: seed-cache-check
+        run: |
+          tag="ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${AM_SEED_KEY}"
+          if docker manifest inspect "$tag" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: "Build ambox image to generate dumps"
+        if: steps.seed-cache-check.outputs.exists != 'true'
+        run: |
+          docker buildx build --progress=plain --load \
+            --build-arg AM_SEED_CACHE_IMAGE=seedcache-empty \
+            --target seed-builder \
+            -f hack/box/Dockerfile \
+            -t ambox-seed-builder:${AM_SEED_KEY} .
+      - name: "Extract seed dumps"
+        if: steps.seed-cache-check.outputs.exists != 'true'
+        run: |
+          out_dir="${{ runner.temp }}/seed-output"
+          mkdir -p "$out_dir"
+          cid=$(docker create ambox-seed-builder:${AM_SEED_KEY})
+          docker cp "$cid":/docker-seed/mcp.sql.gz "$out_dir"/mcp.sql.gz
+          docker cp "$cid":/docker-seed/ss.sql.gz "$out_dir"/ss.sql.gz
+          docker rm "$cid"
+          echo "${AM_SEED_KEY}" > "$out_dir"/seed.key
+      - name: "Build seed cache image"
+        if: steps.seed-cache-check.outputs.exists != 'true'
+        run: |
+          out_dir="${{ runner.temp }}/seed-output"
+          cat > "${{ runner.temp }}/SeedCache.Dockerfile" <<'EOF'
+          FROM scratch
+          LABEL org.opencontainers.image.title="ambox build cache"
+          LABEL org.opencontainers.image.description="Build-time cache artifacts for ambox"
+          LABEL org.opencontainers.image.source="https://github.com/sevein/ambox"
+          LABEL com.sevein.ambox.purpose="seed-cache"
+          ARG AM_SEED_KEY
+          LABEL com.sevein.ambox.seed.key="${AM_SEED_KEY}"
+          COPY mcp.sql.gz /seed/mcp.sql.gz
+          COPY ss.sql.gz /seed/ss.sql.gz
+          COPY seed.key /seed/seed.key
+          EOF
+          docker buildx build \
+            --progress=plain \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            --build-arg AM_SEED_KEY="${AM_SEED_KEY}" \
+            -f "${{ runner.temp }}/SeedCache.Dockerfile" \
+            -t ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${AM_SEED_KEY} \
+            "$out_dir"

@@ -6,6 +6,11 @@ SOCKET_DIR=/run/mysqld
 SOCKET_PATH=/run/mysqld/mysqld.sock
 SEED_DIR=/docker-seed
 
+if [ -f "$SEED_DIR/mcp.sql.gz" ] && [ -f "$SEED_DIR/ss.sql.gz" ]; then
+  echo "seed-mysql: seed dumps already present; skipping."
+  exit 0
+fi
+
 if [ ! -d "$DATA_DIR/mysql" ]; then
   if command -v mariadb-install-db >/dev/null 2>&1; then
     mariadb-install-db --user=mysql --datadir="$DATA_DIR" >/dev/null

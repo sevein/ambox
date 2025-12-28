@@ -11,6 +11,9 @@ ARG SFTPGO_VERSION=2.7.0
 ARG MEDIAAREA_VERSION=1.0-25
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
+# Required seed cache image (OCI artifact with /seed/*.sql.gz).
+ARG AM_SEED_CACHE_IMAGE
+
 # uv provides the uv and uvx binaries.
 # -----------------------------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
@@ -129,9 +132,16 @@ RUN npm clean-install --ignore-scripts
 COPY --link src/archivematica/dashboard/vue /src/src/archivematica/dashboard/vue
 RUN npm run build
 
+# Empty seed cache stage (used when explicitly requested).
+FROM base AS seedcache-empty
+RUN mkdir -p /seed
+
+# Seed cache stage (must be provided via AM_SEED_CACHE_IMAGE).
+FROM ${AM_SEED_CACHE_IMAGE} AS seedcache
+
 # The final runtime image.
 # -----------------------------------------------------------------------------
-FROM base
+FROM base AS runtime-base
 
 ARG USER_ID
 ARG GROUP_ID
@@ -275,7 +285,7 @@ RUN set -ex \
 	&& chown -R archivematica:archivematica /home/archivematica/sampledata /home/archivematica/transfers
 
 # Build-time seed helper script.
-COPY --link hack/box/scripts/seed-mysql.sh /usr/local/bin/seed-mysql.sh
+COPY --link hack/box/scripts/seed/seed.sh /usr/local/bin/seed.sh
 
 # Dashboard build-time preparation.
 USER root
@@ -293,9 +303,20 @@ COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/sr
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src
 
-# Optionally pre-seed the MySQL databases during build to speed up container
-# startup. Dumps are loaded by the db-seed oneshot at runtime.
-RUN /usr/local/bin/seed-mysql.sh
+# Seed builder stage (generates /docker-seed).
+FROM runtime-base AS seed-builder
+RUN /usr/local/bin/seed.sh
+
+# Final runtime image (requires AM_SEED_CACHE_IMAGE to provide dumps).
+FROM runtime-base AS runtime
+
+# Pre-seed the MySQL databases during build to speed up container startup.
+# Dumps are loaded by the db-seed oneshot at runtime.
+RUN --mount=type=bind,from=seedcache,source=/seed,target=/seed-cache,ro \
+	install -d /docker-seed \
+	&& cp /seed-cache/mcp.sql.gz /docker-seed/mcp.sql.gz \
+	&& cp /seed-cache/ss.sql.gz /docker-seed/ss.sql.gz \
+	&& if [ -f /seed-cache/seed.key ]; then cp /seed-cache/seed.key /docker-seed/seed.key; fi
 
 # Precompute static assets and translations.
 USER archivematica
