@@ -2,17 +2,15 @@
 
 IMAGE ?= artefactual/ambox
 TAG ?= test
+SEED_CACHE_IMAGE ?= ghcr.io/sevein/ambox-build-cache
+AM_SEED_KEY ?= $(shell ./scripts/seed/key.sh)
+AM_SEED_CACHE_IMAGE ?= $(SEED_CACHE_IMAGE):seed-$(AM_SEED_KEY)
 
 build:
-	docker build --progress=plain -t $(IMAGE):$(TAG) -f Dockerfile $(CURDIR)/../../
-
-buildx-publish:
-	docker buildx build \
-		--progress=plain \
-		--platform linux/amd64,linux/arm64 \
-		--push \
-		-t ghcr.io/sevein/ambox:$(TAG) \
-		-t artefactual/ambox:$(TAG) \
+	docker build --progress=plain \
+		--build-arg AM_SEED_CACHE_IMAGE=$(AM_SEED_CACHE_IMAGE) \
+		--build-arg AM_SEED_KEY=$(AM_SEED_KEY) \
+		-t $(IMAGE):$(TAG) \
 		-f Dockerfile \
 		$(CURDIR)/../../
 

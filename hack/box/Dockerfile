@@ -12,7 +12,8 @@ ARG MEDIAAREA_VERSION=1.0-25
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
 # Required seed cache image (OCI artifact with /seed/*.sql.gz).
-ARG AM_SEED_CACHE_IMAGE
+# Default keeps Dockerfile parsers happy; runtime stage enforces override.
+ARG AM_SEED_CACHE_IMAGE=seedcache-empty
 
 # uv provides the uv and uvx binaries.
 # -----------------------------------------------------------------------------
@@ -309,6 +310,11 @@ RUN /usr/local/bin/seed.sh
 
 # Final runtime image (requires AM_SEED_CACHE_IMAGE to provide dumps).
 FROM runtime-base AS runtime
+ARG AM_SEED_CACHE_IMAGE
+RUN if [ "$AM_SEED_CACHE_IMAGE" = "seedcache-empty" ]; then \
+		echo "AM_SEED_CACHE_IMAGE must be set to a seed cache image" >&2; \
+		exit 1; \
+	fi
 
 # Pre-seed the MySQL databases during build to speed up container startup.
 # Dumps are loaded by the db-seed oneshot at runtime.
