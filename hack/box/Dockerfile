@@ -280,10 +280,14 @@ COPY --chown=${USER_ID}:${GROUP_ID} --link . /src
 RUN set -ex \
 	&& install -d -o archivematica -g archivematica -m 0755 /home/archivematica/sampledata \
 	&& install -d -o archivematica -g archivematica -m 0755 /home/archivematica/transfers \
-	&& cp -a \
-		/src/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV \
-		/src/hack/submodules/archivematica-sampledata/SampleTransfers/Images \
-		/home/archivematica/sampledata/ \
+	&& if [ -d /src/hack/submodules/archivematica-sampledata/SampleTransfers ]; then \
+		cp -a \
+			/src/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV \
+			/src/hack/submodules/archivematica-sampledata/SampleTransfers/Images \
+			/home/archivematica/sampledata/; \
+	else \
+		echo "Sampledata submodule not present; skipping seed sample transfers."; \
+	fi \
 	&& chown -R archivematica:archivematica /home/archivematica/sampledata /home/archivematica/transfers
 
 # Build-time seed helper script.
