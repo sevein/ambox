@@ -1,1 +1,0 @@
-/command/with-contenv /bin/sh -e /etc/s6-overlay/s6-rc.d/sftpgo-init/up.sh

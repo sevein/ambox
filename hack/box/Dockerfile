@@ -259,8 +259,7 @@ COPY hack/box/etc/sftpgo/sftpgo.json /etc/sftpgo/sftpgo.json
 COPY hack/box/etc/archivematica/ /etc/archivematica/
 RUN set -ex \
 	&& rm -rf /etc/s6-overlay/s6-rc.d/contents.d \
-	&& mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
-	&& touch /etc/s6-overlay/s6-rc.d/user/contents.d/am-ready
+	&& mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d
 
 # Copy the application source code.
 COPY --chown=${USER_ID}:${GROUP_ID} --link . /src

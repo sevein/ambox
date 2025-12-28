@@ -131,7 +131,6 @@ flowchart TB
   subgraph Bootstrap[Database bootstrap]
     mysql_init[mysql-init]
     db_seed[db-seed]
-    sftpgo_init[sftpgo-init]
   end
 
   subgraph SS[Storage Service]
@@ -161,7 +160,6 @@ flowchart TB
   %% Core deps
   mysql --> mysql_init --> db_seed
   mysql --> gearmand
-  sftpgo_init --> sftpgo
 
   %% Storage Service
   db_seed --> ss_migrate --> ss_gunicorn
@@ -196,8 +194,7 @@ flowchart TB
 | Service | Depends on |
 |---|---|
 | `mysql` | (none) |
-| `sftpgo-init` | (none) |
-| `sftpgo` | `sftpgo-init` |
+| `sftpgo` | (none) |
 | `mysql-init` | `mysql` |
 | `db-seed` | `mysql-init` |
 | `gearmand` | `mysql` |
