@@ -18,13 +18,7 @@ for i in $(seq 1 60); do
 done
 
 DASHBOARD_URL=${AM_DASHBOARD_URL:-http://127.0.0.1:64080}
-for i in $(seq 1 60); do
-  status=$(curl -s -o /dev/null -w '%{http_code}' "$DASHBOARD_URL/" || true)
-  if [ "$status" -ge 200 ] && [ "$status" -lt 500 ]; then
-    break
-  fi
-  sleep 0.5
-done
+/usr/local/bin/wait-http.sh "$DASHBOARD_URL/" 60 0.5
 
 s6-setuidgid archivematica env \
   HOME=/var/archivematica \

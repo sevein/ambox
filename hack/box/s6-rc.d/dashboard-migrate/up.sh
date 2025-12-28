@@ -36,13 +36,7 @@ for i in $(seq 1 40); do
   sleep 0.5
 done
 # Ensure SS API is up before install
-for i in $(seq 1 60); do
-  status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8001/ || true)
-  if [ "$status" -ge 200 ] && [ "$status" -lt 500 ]; then
-    break
-  fi
-  sleep 0.5
-done
+/usr/local/bin/wait-http.sh http://127.0.0.1:8001/ 60 0.5
 python3 /src/src/archivematica/dashboard/manage.py migrate --noinput
 python3 /src/src/archivematica/dashboard/manage.py install \
   --username="test" --password="test" --email="test@test.com" \
