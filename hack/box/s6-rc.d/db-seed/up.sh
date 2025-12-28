@@ -50,9 +50,9 @@ if [ "${mcp_tables:-0}" -gt 0 ] || [ "${ss_tables:-0}" -gt 0 ]; then
 fi
 
 echo "db-seed: importing MCP dump..."
-gunzip -c "$MCP_DUMP" | $MYSQL MCP
+{ echo "SET FOREIGN_KEY_CHECKS=0;"; gunzip -c "$MCP_DUMP"; echo "SET FOREIGN_KEY_CHECKS=1;"; } | $MYSQL MCP
 echo "db-seed: importing SS dump..."
-gunzip -c "$SS_DUMP" | $MYSQL SS
+{ echo "SET FOREIGN_KEY_CHECKS=0;"; gunzip -c "$SS_DUMP"; echo "SET FOREIGN_KEY_CHECKS=1;"; } | $MYSQL SS
 
 touch "$SEED_STAMP"
 echo "db-seed: completed."
