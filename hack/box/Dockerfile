@@ -263,6 +263,7 @@ RUN ARCH=$(uname -m) && \
 COPY hack/box/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY --link hack/box/scripts/disable-virus-scan.py /usr/local/bin/disable-virus-scan.py
 COPY --link hack/box/scripts/wait-http.sh /usr/local/bin/wait-http.sh
+COPY --link hack/box/scripts/wait-mysql.sh /usr/local/bin/wait-mysql.sh
 
 # Install Nginx reverse-proxy configuration for the monolith.
 COPY hack/box/etc/nginx/ /etc/nginx/

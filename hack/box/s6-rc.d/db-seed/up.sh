@@ -22,24 +22,10 @@ if [ ! -r "$MCP_DUMP" ] || [ ! -r "$SS_DUMP" ]; then
   exit 0
 fi
 
-MYSQL_SOCKET=/var/run/mysqld/mysqld.sock
-if [ ! -S "$MYSQL_SOCKET" ]; then
-  MYSQL_SOCKET=/run/mysqld/mysqld.sock
-fi
-
-MYSQL_ADMIN="mysqladmin --protocol=socket --socket=$MYSQL_SOCKET -uroot"
+MYSQL_SOCKET=/run/mysqld/mysqld.sock
 MYSQL="mysql --protocol=socket --socket=$MYSQL_SOCKET -uroot"
 
-for i in $(seq 1 60); do
-  if $MYSQL_ADMIN ping --silent >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
-if ! $MYSQL_ADMIN ping --silent >/dev/null 2>&1; then
-  echo "db-seed: MySQL not ready; aborting."
-  exit 1
-fi
+/usr/local/bin/wait-mysql.sh 60 0.5
 
 mcp_tables=$($MYSQL -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='MCP';")
 ss_tables=$($MYSQL -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='SS';")

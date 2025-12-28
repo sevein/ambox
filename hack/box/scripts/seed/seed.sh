@@ -30,16 +30,9 @@ mysqld --user=mysql --datadir="$DATA_DIR" --skip-networking=0 \
   --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci &
 mysql_pid=$!
 
-MYSQL_ADMIN="mysqladmin --protocol=socket --socket=$SOCKET_PATH -uroot"
 MYSQL="mysql --protocol=socket --socket=$SOCKET_PATH -uroot"
 
-for i in $(seq 1 60); do
-  if $MYSQL_ADMIN ping --silent >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
-if ! $MYSQL_ADMIN ping --silent >/dev/null 2>&1; then
+if ! /usr/local/bin/wait-mysql.sh 60 0.5; then
   echo "seed-mysql: MySQL did not become ready" >&2
   exit 1
 fi

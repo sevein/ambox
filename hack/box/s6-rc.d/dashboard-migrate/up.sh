@@ -29,12 +29,8 @@ if [ -f "$SEED_STAMP" ]; then
   exit 0
 fi
 
-for i in $(seq 1 40); do
-  if mysqladmin ping -h127.0.0.1 --silent >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
+# Ensure MySQL is ready before running migrations.
+/usr/local/bin/wait-mysql.sh 40 0.5
 # Ensure SS API is up before install
 /usr/local/bin/wait-http.sh http://127.0.0.1:8001/ 60 0.5
 python3 /src/src/archivematica/dashboard/manage.py migrate --noinput

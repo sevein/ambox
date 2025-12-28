@@ -21,12 +21,7 @@ if [ ! -f "$MANAGE_PY" ]; then
   echo "Storage Service manage.py not found at $MANAGE_PY" >&2
   exit 2
 fi
-for i in $(seq 1 40); do
-  if mysqladmin ping -h127.0.0.1 --silent >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
+/usr/local/bin/wait-mysql.sh 40 0.5
 /venv-ss/bin/python3 "$MANAGE_PY" migrate --noinput
 SS_ADMIN_USERNAME=${SS_ADMIN_USERNAME:-test}
 SS_ADMIN_PASSWORD=${SS_ADMIN_PASSWORD:-test}
