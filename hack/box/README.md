@@ -10,7 +10,7 @@ Run the image and publish the dashboard on port `8080`:
 
     docker run --rm -p 8080:64080 ghcr.io/sevein/ambox:test
 
-Then open `http://localhost:8080/` in your browser. You're ready to go!
+Then open <http://localhost:8080/> in your browser. You're ready to go!
 
 ## Usage
 
