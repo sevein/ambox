@@ -164,6 +164,13 @@ else
   fi
 
   {
+    echo "## Container images"
+    echo
+    echo "Multi-architecture image available at:"
+    echo
+    echo "- `ghcr.io/sevein/ambox:${current_tag}`"
+    echo "- `artefactual/ambox:${current_tag}`"
+    echo
     echo "## Changelog"
     echo
     printf '%s\n' "${commit_lines[@]}"
