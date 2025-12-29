@@ -170,6 +170,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	&& apt-get install -y --no-install-recommends \
 		atool \
 		bulk-extractor \
+		clamav \
+		clamav-daemon \
 		coreutils \
 		ffmpeg \
 		gearman \
@@ -214,6 +216,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		uuid \
 		xz-utils \
 	&& rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=cache,target=/var/lib/clamav-cache,sharing=locked \
+	set -e \
+	&& install -d -o clamav -g clamav -m 0755 /var/lib/clamav /var/lib/clamav-cache /var/log/clamav \
+	&& freshclam --quiet --datadir=/var/lib/clamav-cache \
+	&& rm -rf /var/lib/clamav/* \
+	&& cp -a /var/lib/clamav-cache/. /var/lib/clamav/
 
 # Install SFTPGo from upstream release assets.
 RUN set -ex \

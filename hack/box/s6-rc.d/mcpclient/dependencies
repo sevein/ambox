@@ -1,3 +1,4 @@
 mysql-init
 gearmand
 ss-gunicorn
+clamd

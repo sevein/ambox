@@ -128,8 +128,8 @@ in `s6-rc.d`.
 Compared to the standard (officially supported) approach, this image prioritizes
 simplicity and portability over composability:
 
-- Not all ecosystem services are included (e.g. Elasticsearch indexing and
-  virus scanning are intentionally omitted).
+- Not all ecosystem services are included (e.g. Elasticsearch indexing is
+  intentionally omitted).
 - Scaling and swapping components independently is harder than in a
   multi-container deployment.
 - Production hardening (storage, backups, tuning, security controls) is still
@@ -189,7 +189,6 @@ flowchart TB
 
   %% Core deps
   mysql --> mysql_init --> db_seed
-  mysql --> gearmand
 
   %% Storage Service
   db_seed --> ss_migrate --> ss_gunicorn
@@ -207,6 +206,7 @@ flowchart TB
   mysql_init --> mcpclient
   ss_gunicorn --> mcpclient
   gearmand --> mcpclient
+  clamd --> mcpclient
 
   %% Nginx + readiness marker
   dashboard_gunicorn --> nginx
@@ -227,13 +227,13 @@ flowchart TB
 | `sftpgo` | (none) |
 | `mysql-init` | `mysql` |
 | `db-seed` | `mysql-init` |
-| `gearmand` | `mysql` |
+| `gearmand` | (none) |
 | `ss-migrate` | `db-seed` |
 | `ss-gunicorn` | `ss-migrate`, `gearmand` |
 | `dashboard-migrate` | `ss-gunicorn`, `gearmand` |
 | `dashboard-gunicorn` | `dashboard-migrate`, `gearmand` |
 | `mcpserver` | `mysql-init`, `gearmand`, `dashboard-migrate` |
-| `mcpclient` | `mysql-init`, `gearmand`, `ss-gunicorn` |
+| `mcpclient` | `mysql-init`, `gearmand`, `ss-gunicorn`, `clamd` |
 | `nginx` | `dashboard-gunicorn`, `ss-gunicorn` |
 | `am-ready` | `mcpserver`, `mcpclient`, `nginx` |
 | `config` | `am-ready` |

@@ -4,9 +4,8 @@ processing:
     - name: automated
       extends: automated
       config:
-        virus_scanning: false
+        normalize: do_not_normalize
     - name: demo
       extends: default
       config:
         virus_scanning: false
-        bind_pids: true
