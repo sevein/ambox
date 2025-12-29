@@ -79,7 +79,6 @@ def run_gearman_worker(
     """Target function executed by child processes in the pool."""
     # Set up logging, as we're in a new process now.
     logger = logging.getLogger("archivematica.mcp.client")
-    logger.setLevel(logging.DEBUG)
     queue_handler = logging.handlers.QueueHandler(log_queue)
     logger.addHandler(queue_handler)
 
