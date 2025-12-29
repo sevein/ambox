@@ -85,6 +85,35 @@ Useful interactive commands once connected:
     pwd
     put -r /path/to/transfer
 
+## Configuration schema
+
+At boot, ambox reads a config document from `/etc/ambox/config.yaml`, falling
+back to the bundled default in [`config/ambox.yaml`](config/ambox.yaml).
+Today the document can populate processing configurations; additional config
+types are planned. The JSON Schema is in [`config/schema.json`]. You can
+override the config path with `AMBOX_CONFIG_FILE`.
+
+Example config that extends the bundled defaults, adds an automated override,
+and defines a full "demo" configuration:
+
+```yaml
+version: v1
+processing:
+  configs:
+    - name: automated
+      extends: automated
+      config:
+        virus_scanning: false
+    - name: demo
+      extends: default
+      config:
+        virus_scanning: false
+        bind_pids: true
+```
+
+[`config/ambox.yaml`]: config/ambox.yaml
+[`config/schema.json`]: config/schema.json
+
 ## How it works
 
 This image uses the s6-overlay init system to supervise all core Archivematica
@@ -155,7 +184,7 @@ flowchart TB
   end
 
   subgraph Post[Post-boot]
-    processing_config[processing-config]
+    config[config]
   end
 
   %% Core deps
@@ -187,7 +216,7 @@ flowchart TB
   nginx --> am_ready
 
   %% Post-boot config
-  am_ready --> processing_config
+  am_ready --> config
 ```
 
 ### Dependency list
@@ -207,4 +236,4 @@ flowchart TB
 | `mcpclient` | `mysql-init`, `gearmand`, `ss-gunicorn` |
 | `nginx` | `dashboard-gunicorn`, `ss-gunicorn` |
 | `am-ready` | `mcpserver`, `mcpclient`, `nginx` |
-| `processing-config` | `am-ready` |
+| `config` | `am-ready` |

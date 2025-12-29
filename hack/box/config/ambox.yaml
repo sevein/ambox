@@ -1,0 +1,12 @@
+version: v1
+processing:
+  configs:
+    - name: automated
+      extends: automated
+      config:
+        virus_scanning: false
+    - name: demo
+      extends: default
+      config:
+        virus_scanning: false
+        bind_pids: true

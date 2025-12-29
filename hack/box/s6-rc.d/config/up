@@ -1,0 +1,2 @@
+#!/command/execlineb -P
+/command/with-contenv /bin/bash -e /etc/s6-overlay/s6-rc.d/config/up.sh

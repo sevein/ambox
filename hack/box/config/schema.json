@@ -1,0 +1,408 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ambox/config.schema.json",
+  "title": "ambox config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "$defs": {
+    "processingConfigSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "base64",
+            "file"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "base64"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^[A-Za-z0-9+/=\\n\\r]+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^/"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Source for processing config data."
+    },
+    "processingConfigChoices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "virus_scanning": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Scan for viruses?"
+        },
+        "assign_uuids_to_directories": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Assign UUIDs to directories?"
+        },
+        "generate_transfer_structure": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Generate transfer structure report?"
+        },
+        "select_format_id_tool_transfer": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform file format identification (Transfer)?"
+        },
+        "extract_packages": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Extract packages?"
+        },
+        "delete_packages": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Delete package after extraction?"
+        },
+        "policy_checks_originals": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform policy checks on originals?"
+        },
+        "examine_contents": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Examine contents?"
+        },
+        "create_sip": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "enum": [
+            true,
+            null
+          ],
+          "description": "Create SIP(s)?"
+        },
+        "select_format_id_tool_ingest": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform file format identification (Ingest)?"
+        },
+        "normalize": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "preservation_access",
+            "preservation",
+            "access",
+            "service_access",
+            "manual",
+            "do_not_normalize",
+            null
+          ],
+          "description": "Normalize."
+        },
+        "normalize_transfer": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Approve normalization?"
+        },
+        "normalize_thumbnail_mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "yes",
+            "yes_no_icons",
+            "no",
+            null
+          ],
+          "description": "Choose thumbnail mode."
+        },
+        "policy_checks_preservation_derivatives": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform policy checks on preservation derivatives?"
+        },
+        "policy_checks_access_derivatives": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform policy checks on access derivatives?"
+        },
+        "bind_pids": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Bind PIDs?"
+        },
+        "normative_structmap": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Document empty directories?"
+        },
+        "reminder": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "continue",
+            null
+          ],
+          "description": "Reminder: add metadata if desired."
+        },
+        "transcribe_file": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Transcribe SIP contents?"
+        },
+        "select_format_id_tool_submissiondocs": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Perform file format identification (Submission documentation & metadata)?"
+        },
+        "compression_algo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "7z_bzip2",
+            "7z_lzma",
+            "7z_none",
+            "tar_gzip",
+            "pbzip2",
+            "uncompressed",
+            null
+          ],
+          "description": "Select compression algorithm."
+        },
+        "compression_level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            null
+          ],
+          "description": "Select compression level."
+        },
+        "store_aip": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Store AIP?"
+        },
+        "store_aip_location": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "oneOf": [
+            {
+              "const": "default"
+            },
+            {
+              "pattern": "^location:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          ],
+          "description": "Store AIP location."
+        },
+        "upload_dip": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "atom",
+            "archivesspace",
+            "contentdm",
+            "do_not_upload",
+            null
+          ],
+          "description": "Upload DIP."
+        },
+        "store_dip": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Store DIP?"
+        },
+        "store_dip_location": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "oneOf": [
+            {
+              "const": "default"
+            },
+            {
+              "pattern": "^location:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          ],
+          "description": "Store DIP location."
+        }
+      },
+      "description": "Declarative processing configuration choices."
+    },
+    "processingConfigItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$",
+          "description": "Processing config name (e.g. default, automated)."
+        },
+        "extends": {
+          "type": "string",
+          "enum": [
+            "default",
+            "automated"
+          ],
+          "description": "Base bundled config to extend."
+        },
+        "source": {
+          "$ref": "#/$defs/processingConfigSource"
+        },
+        "config": {
+          "$ref": "#/$defs/processingConfigChoices"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "source"
+          ],
+          "not": {
+            "required": [
+              "extends"
+            ]
+          }
+        },
+        {
+          "required": [
+            "config"
+          ],
+          "not": {
+            "required": [
+              "source"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": [
+        "v1"
+      ],
+      "description": "Schema version for this config file."
+    },
+    "processing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "configs": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/processingConfigItem"
+          },
+          "default": [],
+          "description": "Processing XMLs to load or override."
+        }
+      },
+      "description": "Processing configuration."
+    }
+  }
+}
