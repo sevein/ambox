@@ -164,18 +164,13 @@ else
   fi
 
   {
-    echo "## Container images"
-    echo
-    echo "Multi-architecture image available at:"
-    echo
-    echo "- `ghcr.io/sevein/ambox:${current_tag}`"
-    echo "- `artefactual/ambox:${current_tag}`"
-    echo
-    echo "## Changelog"
-    echo
+    printf '## Container images\n\n'
+    printf 'Multi-architecture image available at:\n\n'
+    printf -- '- `ghcr.io/sevein/ambox:%s`\n' "$current_tag"
+    printf -- '- `artefactual/ambox:%s`\n\n' "$current_tag"
+    printf '## Changelog\n\n'
     printf '%s\n' "${commit_lines[@]}"
-    echo
-    echo "${compare_url}"
+    printf '\n%s\n' "$compare_url"
   } >"$notes_file"
 fi
 
