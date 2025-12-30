@@ -34,8 +34,11 @@ Ports exposed by the container:
 - `64080` Dashboard
 - `64081` Storage Service
 - `64022` SFTP (user `archivematica`, password `12345`)
-- If `make run` fails with a port bind error, stop any previous ambox container
-  before retrying (the container name is auto-generated unless explicitly set).
+- `make run` names the container `ambox-test`. If it fails with a port bind
+  error, stop the existing `ambox-test` container before retrying.
+- Simple verification workflow: 1) run `make run`, 2) curl the dashboard login
+  page at `http://localhost:64080/`, 3) stop the `ambox-test` container. Use
+  `hack/box/verify.sh` to run this workflow automatically.
 
 ## Release flow (CI)
 
