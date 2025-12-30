@@ -7,7 +7,8 @@ AM_SEED_KEY ?= $(shell ./scripts/seed/key.sh)
 AM_SEED_CACHE_IMAGE ?= $(SEED_CACHE_IMAGE):seed-$(AM_SEED_KEY)
 
 build:
-	docker build --progress=plain \
+	docker build \
+		--progress=plain \
 		--build-arg AM_SEED_CACHE_IMAGE=$(AM_SEED_CACHE_IMAGE) \
 		--build-arg AM_SEED_KEY=$(AM_SEED_KEY) \
 		-t $(IMAGE):$(TAG) \
@@ -15,7 +16,7 @@ build:
 		$(CURDIR)/../../
 
 run: build
-	docker run --rm -p64080:64080 -p64081:64081 -p64022:64022 $(IMAGE):$(TAG)
+	docker run --name=ambox-test --rm -p64080:64080 -p64081:64081 -p64022:64022 $(IMAGE):$(TAG)
 
 shell: build
-	docker run --rm -it --entrypoint=bash $(IMAGE):$(TAG)
+	docker run --name=ambox-test --rm -it --entrypoint=bash $(IMAGE):$(TAG)

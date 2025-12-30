@@ -34,6 +34,8 @@ Ports exposed by the container:
 - `64080` Dashboard
 - `64081` Storage Service
 - `64022` SFTP (user `archivematica`, password `12345`)
+- If `make run` fails with a port bind error, stop any previous ambox container
+  before retrying (the container name is auto-generated unless explicitly set).
 
 ## Release flow (CI)
 
