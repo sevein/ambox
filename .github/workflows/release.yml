@@ -98,7 +98,7 @@ jobs:
           digest="${{ steps.build-dockerhub.outputs.digest }}"
           touch "${{ runner.temp }}/digests-dockerhub/${digest#sha256:}"
       - name: "Upload Docker Hub digest"
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
           name: digests-dockerhub-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests-dockerhub/*
@@ -131,7 +131,7 @@ jobs:
           digest="${{ steps.build-ghcr.outputs.digest }}"
           touch "${{ runner.temp }}/digests-ghcr/${digest#sha256:}"
       - name: "Upload GHCR digest"
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
           name: digests-ghcr-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests-ghcr/*
@@ -147,13 +147,13 @@ jobs:
       packages: write
     steps:
       - name: "Download Docker Hub digests"
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: ${{ runner.temp }}/digests-dockerhub
           pattern: digests-dockerhub-*
           merge-multiple: true
       - name: "Download GHCR digests"
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: ${{ runner.temp }}/digests-ghcr
           pattern: digests-ghcr-*
