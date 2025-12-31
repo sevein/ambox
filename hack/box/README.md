@@ -146,6 +146,8 @@ command below (example uses v1.0.1):
 
     gh workflow run release.yml -f version=1.0.1
 
+### Runtime service dependencies
+
 This is the service dependency graph bundled in the container image, as defined
 in `hack/box/s6-rc.d/*/dependencies`. Arrows point from prerequisite →
 dependent.
@@ -237,3 +239,96 @@ flowchart TB
 | `nginx` | `dashboard-gunicorn`, `ss-gunicorn` |
 | `am-ready` | `mcpserver`, `mcpclient`, `nginx` |
 | `config` | `am-ready` |
+
+## Dockerfile build stages
+
+The `Dockerfile` uses a multi-stage build to construct the final runtime image.
+Understanding these stages helps when making changes or debugging build issues.
+
+**Build stages:**
+
+| Stage | Depends on | Purpose |
+|---|---|---|
+| `uv` | ghcr.io/astral-sh/uv | Provides uv binary for Python management |
+| `base` | ubuntu:noble | Foundation with locale setup and archivematica user |
+| `python-builder` | base, uv | Builds Python virtual environments for AM and SS |
+| `frontend-builder` | node:20 | Compiles Dashboard frontend assets (legacy JS) |
+| `vue-builder` | node:24 | Compiles Dashboard Vue.js frontend |
+| `seedcache-empty` | scratch | Empty placeholder stage (dev/testing only) |
+| `seedcache` | ${AM_SEED_CACHE_IMAGE} | Provides SQL database dumps from external artifact |
+| `runtime-base` | base, uv, python-builder | Runtime with all system packages and Python venvs |
+| `source` | runtime-base, frontend-builder, vue-builder | Adds full source code and compiled frontend assets |
+| `assets` | runtime-base, frontend-builder, vue-builder | Generates Django static assets and translations |
+| `seed-builder` | source | Generates seed dumps (used in CI to create seed cache) |
+| `runtime` | source, seedcache, assets | **Final stage** - combines everything for distribution |
+
+```mermaid
+flowchart TB
+  subgraph External[External Images]
+    uv_ext["ghcr.io/astral-sh/uv"]
+    ubuntu["ubuntu:noble"]
+    node20["node:20"]
+    node24["node:24"]
+    scratch["scratch"]
+    seed_arg["${AM_SEED_CACHE_IMAGE}<br/>(build arg)"]
+  end
+
+  subgraph Build[Build Stages]
+    uv["uv<br/><small>uv binary</small>"]
+    base["base<br/><small>Ubuntu foundation + archivematica user</small>"]
+    python_builder["python-builder<br/><small>Python venvs for AM and SS</small>"]
+    frontend_builder["frontend-builder<br/><small>Legacy Dashboard frontend</small>"]
+    vue_builder["vue-builder<br/><small>Vue.js Dashboard frontend</small>"]
+    seedcache_empty["seedcache-empty<br/><small>Empty placeholder</small>"]
+    seedcache["seedcache<br/><small>SQL dumps from artifact</small>"]
+    runtime_base["runtime-base<br/><small>System packages + Python venvs</small>"]
+    source["source<br/><small>Full source + frontend assets</small>"]
+    assets["assets<br/><small>Django static assets + i18n</small>"]
+    seed_builder["seed-builder<br/><small>Generate seed dumps (CI)</small>"]
+    runtime["runtime<br/><small><b>FINAL IMAGE</b></small>"]
+  end
+
+  %% External dependencies
+  uv_ext --> uv
+  ubuntu --> base
+  node20 --> frontend_builder
+  node24 --> vue_builder
+  scratch --> seedcache_empty
+  seed_arg --> seedcache
+
+  %% Build stage dependencies
+  base --> python_builder
+  uv --> python_builder
+  base --> runtime_base
+  python_builder --> runtime_base
+  uv --> runtime_base
+  runtime_base --> source
+  frontend_builder --> source
+  vue_builder --> source
+  runtime_base --> assets
+  frontend_builder --> assets
+  vue_builder --> assets
+  source --> seed_builder
+  source --> runtime
+  seedcache --> runtime
+  assets --> runtime
+
+  %% Conceptual link: seed-builder produces the seedcache artifact in CI
+  seed_builder -.->|produces in CI| seed_arg
+
+  classDef external fill:#e1f5ff,stroke:#0078d4,stroke-width:2px
+  classDef final fill:#fff4ce,stroke:#ff8c00,stroke-width:3px
+  classDef intermediate fill:#f0f0f0,stroke:#666,stroke-width:1px
+
+  class uv_ext,ubuntu,node20,node24,scratch,seed_arg external
+  class runtime final
+  class uv,base,python_builder,frontend_builder,vue_builder,seedcache_empty,seedcache,runtime_base,source,assets,seed_builder intermediate
+```
+
+The `runtime` stage is what gets tagged and published.
+
+**Note:** The `seed-builder` stage doesn't directly connect to the Dockerfile's
+`seedcache` stage. Instead, it's used in CI to generate the seed cache artifact
+that gets pushed to GHCR. This artifact is then referenced via the
+`AM_SEED_CACHE_IMAGE` build argument in subsequent builds. The dashed line shows
+this conceptual relationship.

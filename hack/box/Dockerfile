@@ -1,7 +1,7 @@
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-ARG UBUNTU_VERSION=24.04
+ARG UBUNTU_VERSION=noble-20251013
 ARG S6_OVERLAY_VERSION=3.2.1.0
 ARG PYTHON_VERSION=3.10.19
 ARG UV_VERSION=0.9.18
@@ -11,15 +11,23 @@ ARG SFTPGO_VERSION=2.7.0
 ARG MEDIAAREA_VERSION=1.0-25
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
-# Required seed cache image (OCI artifact with /seed/*.sql.gz).
-# Default keeps Dockerfile parsers happy; runtime stage enforces override.
+# ambox images include precomputed SQL database dumps (for both Archivematica
+# and Storage Service) to speed up startup times. These dumps are generated in a
+# separate CI workflow and stored in GHCR as an OCI artifact. This build
+# argument specifies which seed cache image to pull the dumps from. The default
+# value "seedcache-empty" is a placeholder that prevents Dockerfile parser
+# errors during development; at build time, the seedcache stage enforces that a
+# real seed image must be provided via --build-arg. See `hack/box/scripts/seed`
+# for implementation details.
 ARG AM_SEED_CACHE_IMAGE=seedcache-empty
 
 # uv provides the uv and uvx binaries.
+#
 # -----------------------------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # base provides our custom ubuntu distro.
+#
 # -----------------------------------------------------------------------------
 FROM ubuntu:${UBUNTU_VERSION} AS base
 
@@ -56,7 +64,8 @@ RUN set -ex \
 	&& groupadd --gid ${GROUP_ID} --system archivematica \
 	&& useradd --uid ${USER_ID} --gid ${GROUP_ID} --home-dir /var/archivematica --system archivematica
 
-# python-builder provides Python and the virtual environments.
+# python-builder provides Python and the AM/SS virtual environments.
+#
 # -----------------------------------------------------------------------------
 FROM base AS python-builder
 
@@ -114,6 +123,7 @@ RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=$
 	&& uv pip install --python /venv-ss/bin/python -r /requirements-ss.txt
 
 # frontend-builder provides the frontend assets.
+#
 # -----------------------------------------------------------------------------
 FROM node:${NODE20_VERSION} AS frontend-builder
 WORKDIR /src/src/archivematica/dashboard/frontend
@@ -124,6 +134,7 @@ COPY --link src/archivematica/dashboard/frontend /src/src/archivematica/dashboar
 RUN npm run prepare
 
 # vue-builder provides the Vue.js frontend assets.
+#
 # -----------------------------------------------------------------------------
 FROM node:${NODE24_VERSION} AS vue-builder
 WORKDIR /src/src/archivematica/dashboard/vue
@@ -133,14 +144,18 @@ RUN npm clean-install --ignore-scripts
 COPY --link src/archivematica/dashboard/vue /src/src/archivematica/dashboard/vue
 RUN npm run build
 
-# Empty seed cache stage (used when explicitly requested).
-FROM base AS seedcache-empty
-RUN mkdir -p /seed
+# seedcache-empty is a placeholder stage that provides an empty seed cache.
+#
+# -----------------------------------------------------------------------------
+FROM scratch AS seedcache-empty
 
-# Seed cache stage (must be provided via AM_SEED_CACHE_IMAGE).
+# seedcache is the seed cache stage that provides SQL dumps.
+#
+# -----------------------------------------------------------------------------
 FROM ${AM_SEED_CACHE_IMAGE} AS seedcache
 
-# The final runtime image.
+# base is the runtime base with system packages.
+#
 # -----------------------------------------------------------------------------
 FROM base AS runtime-base
 
@@ -154,6 +169,7 @@ ARG SFTPGO_VERSION
 # Install uv in the runtime image for PEP 723 scripts.
 COPY --from=uv /uv /uvx /usr/local/bin/
 
+# Configure the package repositories.
 RUN set -ex \
 	&& UBUNTU_CODENAME=$(grep -Po '(?<=^VERSION_CODENAME=).+' /etc/os-release) \
 	&& UBUNTU_ARCH=$(dpkg --print-architecture)  \
@@ -163,6 +179,7 @@ RUN set -ex \
 	&& dpkg -i /tmp/repo-mediaarea.deb \
 	&& rm /tmp/repo-mediaarea.deb
 
+# Install system packages.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt,sharing=locked \
 	set -ex \
@@ -217,6 +234,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		xz-utils \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Update ClamAV virus definitions.
 RUN --mount=type=cache,target=/var/lib/clamav-cache,sharing=locked \
 	set -e \
 	&& install -d -o clamav -g clamav -m 0755 /var/lib/clamav /var/lib/clamav-cache /var/log/clamav \
@@ -224,7 +242,7 @@ RUN --mount=type=cache,target=/var/lib/clamav-cache,sharing=locked \
 	&& rm -rf /var/lib/clamav/* \
 	&& cp -a /var/lib/clamav-cache/. /var/lib/clamav/
 
-# Install SFTPGo from upstream release assets.
+# Install SFTPGo.
 RUN set -ex \
 	&& ARCH=$(uname -m) \
 	&& if [ "$ARCH" = "x86_64" ]; then SFTPGO_ARCH="x86_64"; \
@@ -244,6 +262,7 @@ RUN usermod -aG mysql archivematica
 # Allow gearmand to write its log file when running as an unprivileged user.
 RUN install -o gearman -g gearman -m 0644 /dev/null /var/log/gearmand.log
 
+# Adjust ownership and permissions of Archivematica directories.
 RUN set -ex \
 	&& mkdir -p \
 		/var/archivematica/sharedDirectory \
@@ -273,7 +292,7 @@ COPY hack/box/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY --link hack/box/scripts/wait-http.sh /usr/local/bin/wait-http.sh
 COPY --link hack/box/scripts/wait-mysql.sh /usr/local/bin/wait-mysql.sh
 
-# Install Nginx reverse-proxy configuration for the monolith.
+# Install Nginx reverse-proxy configuration.
 COPY hack/box/etc/nginx/ /etc/nginx/
 COPY hack/box/etc/sftpgo/initial-data.json /etc/sftpgo/initial-data.json
 COPY hack/box/etc/sftpgo/sftpgo.json /etc/sftpgo/sftpgo.json
@@ -281,6 +300,11 @@ COPY hack/box/etc/archivematica/ /etc/archivematica/
 RUN set -ex \
 	&& rm -rf /etc/s6-overlay/s6-rc.d/contents.d \
 	&& mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d
+
+# source is the stage that adds the full source code and frontend assets.
+#
+# -----------------------------------------------------------------------------
+FROM runtime-base AS source
 
 # Copy the application source code.
 COPY --chown=${USER_ID}:${GROUP_ID} --link . /src
@@ -299,9 +323,6 @@ RUN set -ex \
 	fi \
 	&& chown -R archivematica:archivematica /home/archivematica/sampledata /home/archivematica/transfers
 
-# Build-time seed helper script.
-COPY --link hack/box/scripts/seed/seed.sh /usr/local/bin/seed.sh
-
 # Dashboard build-time preparation.
 USER root
 RUN set -ex \
@@ -318,25 +339,28 @@ COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/sr
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src
 
-# Seed builder stage (generates /docker-seed).
-FROM runtime-base AS seed-builder
-RUN /usr/local/bin/seed.sh
+# assets provides precomputed static assets and translations.
+#
+# -----------------------------------------------------------------------------
+FROM runtime-base AS assets
 
-# Final runtime image (requires AM_SEED_CACHE_IMAGE to provide dumps).
-FROM runtime-base AS runtime
-ARG AM_SEED_CACHE_IMAGE
-RUN if [ "$AM_SEED_CACHE_IMAGE" = "seedcache-empty" ]; then \
-		echo "AM_SEED_CACHE_IMAGE must be set to a seed cache image" >&2; \
-		exit 1; \
-	fi
+COPY --chown=${USER_ID}:${GROUP_ID} --link src /src/src
+COPY --chown=${USER_ID}:${GROUP_ID} --link hack/submodules/archivematica-storage-service /src/hack/submodules/archivematica-storage-service
 
-# Pre-seed the MySQL databases during build to speed up container startup.
-# Dumps are loaded by the db-seed oneshot at runtime.
-RUN --mount=type=bind,from=seedcache,source=/seed,target=/seed-cache,ro \
-	install -d /docker-seed \
-	&& cp /seed-cache/mcp.sql.gz /docker-seed/mcp.sql.gz \
-	&& cp /seed-cache/ss.sql.gz /docker-seed/ss.sql.gz \
-	&& if [ -f /seed-cache/seed.key ]; then cp /seed-cache/seed.key /docker-seed/seed.key; fi
+USER root
+RUN set -ex \
+	&& internalDirs=' \
+		/src/src/archivematica/dashboard/frontend \
+		/src/src/archivematica/dashboard/static \
+		/src/src/archivematica/dashboard/media \
+	' \
+	&& mkdir -p $internalDirs \
+	&& chown -R archivematica:archivematica $internalDirs
+COPY --from=frontend-builder --link /src/src/archivematica/dashboard/media/js/ /src/src/archivematica/dashboard/media/js/
+COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/src/archivematica/dashboard/vue/dist
+
+ENV PATH="/venv/bin:$PATH"
+ENV PYTHONPATH=/src/src
 
 # Precompute static assets and translations.
 USER archivematica
@@ -359,7 +383,39 @@ RUN set -ex \
 	&& DJANGO_SETTINGS_MODULE=archivematica.dashboard.settings.local \
 		python3 /src/src/archivematica/dashboard/manage.py compilemessages --verbosity 0
 
-# s6-overlay uses root but s6-setuidgid will drop to archivematica later.
+# seed-builder is the stage that generates the seed dumps.
+#
+# -----------------------------------------------------------------------------
+FROM source AS seed-builder
+COPY --link hack/box/scripts/seed/seed.sh /usr/local/bin/seed.sh
+RUN /usr/local/bin/seed.sh
+
+# runtime is the final image combining everything together.
+#
+# -----------------------------------------------------------------------------
+FROM source AS runtime
+
+ARG AM_SEED_CACHE_IMAGE
+
+# Enforce that a real seed cache image is provided at build time.
+# "seedcache-empty" is just a placeholder to avoid Dockerfile parser errors.
+RUN if [ "$AM_SEED_CACHE_IMAGE" = "seedcache-empty" ]; then echo "AM_SEED_CACHE_IMAGE must be set to a seed cache image" >&2; exit 1; fi
+
+# Pre-seed the MySQL databases during build to speed up container startup.
+# Dumps are loaded by the db-seed oneshot at runtime.
+RUN --mount=type=bind,from=seedcache,source=/seed,target=/seed-cache,ro \
+	install -d /docker-seed \
+	&& cp /seed-cache/mcp.sql.gz /docker-seed/mcp.sql.gz \
+	&& cp /seed-cache/ss.sql.gz /docker-seed/ss.sql.gz \
+	&& if [ -f /seed-cache/seed.key ]; then cp /seed-cache/seed.key /docker-seed/seed.key; fi
+
+# Overlay precomputed static assets and translations.
+COPY --chown=${USER_ID}:${GROUP_ID} --from=assets /src/src/archivematica/dashboard/static /src/src/archivematica/dashboard/static
+COPY --chown=${USER_ID}:${GROUP_ID} --from=assets /src/src/archivematica/dashboard/locale /src/src/archivematica/dashboard/locale
+COPY --chown=${USER_ID}:${GROUP_ID} --from=assets /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/assets /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/assets
+COPY --chown=${USER_ID}:${GROUP_ID} --from=assets /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/locale /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/locale
+
+# s6-overlay uses root but s6-setuidgid will drop to other users as needed.
 USER root
 
 # Prepare runtime environment.
