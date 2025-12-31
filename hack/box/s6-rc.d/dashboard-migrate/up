@@ -15,13 +15,13 @@ foreground {
   s6-envdir -f /etc/ambox/envs/dashboard
   s6-setuidgid archivematica
   foreground {
-    cd /src /venv/bin/python3 \
+    cd /src /venv/bin/python \
       src/archivematica/dashboard/manage.py \
       migrate \
       --noinput
   }
   foreground {
-    cd /src /venv/bin/python3 \
+    cd /src /venv/bin/python \
       src/archivematica/dashboard/manage.py \
       install \
       --username=test \

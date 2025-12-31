@@ -9,7 +9,7 @@ foreground {
 foreground {
   s6-envdir -f /etc/ambox/envs/storage
   s6-setuidgid archivematica
-  cd /src /venv-ss/bin/python3 \
+  cd /src /venv-ss/bin/python \
     /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py \
     migrate \
     --noinput
@@ -18,7 +18,7 @@ foreground {
 foreground {
   s6-envdir -f /etc/ambox/envs/storage
   s6-setuidgid archivematica
-  cd /src /venv-ss/bin/python3 \
+  cd /src /venv-ss/bin/python \
     /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py \
     create_user \
     --username=test \

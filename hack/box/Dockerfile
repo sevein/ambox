@@ -376,16 +376,16 @@ RUN set -ex \
 	&& DJANGO_SETTINGS_MODULE=archivematica.storage_service.storage_service.settings.local \
 		SS_DB_URL=${SS_DB_URL:-mysql://ne:ver@min/d} \
 		PYTHONPATH="$SS_PYTHONPATH" \
-		/venv-ss/bin/python3 -m archivematica.storage_service.manage collectstatic --noinput --clear --verbosity 0 \
+		/venv-ss/bin/python -m archivematica.storage_service.manage collectstatic --noinput --clear --verbosity 0 \
 	&& DJANGO_SETTINGS_MODULE=archivematica.storage_service.storage_service.settings.local \
 		SS_DB_URL=${SS_DB_URL:-mysql://ne:ver@min/d} \
 		PYTHONPATH="$SS_PYTHONPATH" \
-		/venv-ss/bin/python3 -m archivematica.storage_service.manage compilemessages --verbosity 0 \
+		/venv-ss/bin/python -m archivematica.storage_service.manage compilemessages --verbosity 0 \
 	&& cd /src \
 	&& DJANGO_SETTINGS_MODULE=archivematica.dashboard.settings.local \
-		python3 /src/src/archivematica/dashboard/manage.py collectstatic --noinput --clear --verbosity 0 \
+		/venv/bin/python /src/src/archivematica/dashboard/manage.py collectstatic --noinput --clear --verbosity 0 \
 	&& DJANGO_SETTINGS_MODULE=archivematica.dashboard.settings.local \
-		python3 /src/src/archivematica/dashboard/manage.py compilemessages --verbosity 0
+		/venv/bin/python /src/src/archivematica/dashboard/manage.py compilemessages --verbosity 0
 
 # seed-builder is the stage that generates the seed dumps.
 #

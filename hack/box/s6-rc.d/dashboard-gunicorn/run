@@ -3,7 +3,7 @@
 s6-envdir -f /etc/ambox/envs/dashboard
 s6-setuidgid archivematica
 
-cd /src /venv/bin/python3 \
+cd /src /venv/bin/python \
   -m gunicorn \
   --config=/src/src/archivematica/dashboard/install/dashboard.gunicorn-config.py \
   archivematica.dashboard.wsgi:application

@@ -4,7 +4,7 @@ s6-envdir -f /etc/ambox/envs/storage
 s6-setuidgid archivematica
 
 cd /src/hack/submodules/archivematica-storage-service/src \
-  /venv-ss/bin/python3 \
+  /venv-ss/bin/python \
     -m gunicorn \
     --config=/src/hack/submodules/archivematica-storage-service/install/storage-service.gunicorn-config.py \
     archivematica.storage_service.storage_service.wsgi:application

@@ -3,4 +3,4 @@
 s6-envdir -f /etc/ambox/envs/mcpclient
 s6-setuidgid archivematica
 
-cd /src /venv/bin/python3 -m archivematica.MCPClient.archivematicaClient
+cd /src /venv/bin/python -m archivematica.MCPClient.archivematicaClient
