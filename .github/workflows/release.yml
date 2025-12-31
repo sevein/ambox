@@ -213,6 +213,7 @@ jobs:
         with:
           tag: ${{ github.event.inputs.version }}
           title: ${{ github.event.inputs.version }}
+
   seed-cache:
     name: "Build seed cache"
     needs: [validate-version]
