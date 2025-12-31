@@ -1,5 +1,14 @@
-#!/bin/sh
-set -e
-install -d -o clamav -g clamav -m 0755 /run/clamav /var/lib/clamav /var/log/clamav
-install -o clamav -g clamav -m 0644 /dev/null /var/log/clamav/clamd.log
-exec s6-setuidgid clamav clamd --foreground
+#!/command/execlineb -P
+
+foreground {
+  install -d -o clamav -g clamav -m 0755 /run/clamav /var/lib/clamav /var/log/clamav
+}
+
+foreground {
+  install -o clamav -g clamav -m 0644 /dev/null /var/log/clamav/clamd.log
+}
+
+foreground {
+  s6-setuidgid clamav
+  clamd --foreground
+}
