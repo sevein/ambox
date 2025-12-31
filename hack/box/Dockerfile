@@ -289,8 +289,11 @@ RUN ARCH=$(uname -m) && \
     curl -L -o /tmp/s6-overlay-arch.tar.xz https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz && \
     tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz && rm /tmp/s6-overlay-arch.tar.xz
 COPY hack/box/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
-COPY --link hack/box/scripts/wait-http.sh /usr/local/bin/wait-http.sh
-COPY --link hack/box/scripts/wait-mysql.sh /usr/local/bin/wait-mysql.sh
+COPY --link \
+	hack/box/scripts/wait-file.sh \
+	hack/box/scripts/wait-http.sh \
+	hack/box/scripts/wait-mysql.sh \
+		/usr/local/bin/
 
 # Install Nginx reverse-proxy configuration.
 COPY hack/box/etc/nginx/ /etc/nginx/

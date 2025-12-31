@@ -15,12 +15,8 @@ WORKFLOW_FILE=${AM_WORKFLOW_PATH:-/src/src/archivematica/MCPServer/assets/workfl
 SCHEMA_FILE=${AMBOX_SCHEMA_FILE:-/src/hack/box/config/schema.json}
 LOADER=${AMBOX_CONFIG_LOADER:-/src/hack/box/config/loader.py}
 
-for i in $(seq 1 60); do
-  if [ -f "$CONFIG_DIR/defaultProcessingMCP.xml" ] && [ -f "$CONFIG_DIR/automatedProcessingMCP.xml" ]; then
-    break
-  fi
-  sleep 0.5
-done
+/usr/local/bin/wait-file.sh "$CONFIG_DIR/defaultProcessingMCP.xml" 30 0.5
+/usr/local/bin/wait-file.sh "$CONFIG_DIR/automatedProcessingMCP.xml" 30 0.5
 
 DASHBOARD_URL=${AM_DASHBOARD_URL:-http://127.0.0.1:64080}
 /usr/local/bin/wait-http.sh "$DASHBOARD_URL/" 60 0.5
