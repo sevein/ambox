@@ -1,23 +1,10 @@
-#!/bin/sh
-set -e
-export PYTHONPATH="/src/hack/submodules/archivematica-storage-service/src:${PYTHONPATH:-/src/src}"
+#!/command/execlineb -P
 
-: "${SS_DJANGO_SETTINGS_MODULE:=archivematica.storage_service.storage_service.settings.local}"
-: "${DJANGO_SETTINGS_MODULE:=$SS_DJANGO_SETTINGS_MODULE}"
-export DJANGO_SETTINGS_MODULE
-export SS_GUNICORN_BIND=0.0.0.0:8001
-export SS_GUNICORN_ACCESSLOG=/dev/null
-export SS_GUNICORN_ERRORLOG=-
+s6-envdir -f /etc/ambox/envs/storage
+s6-setuidgid archivematica
 
-: "${SS_DB_URL:=mysql://archivematica:demo@localhost/SS}"
-export SS_DB_URL
-: "${SS_GNUPG_HOME_PATH:=/var/archivematica/storage_service/.gnupg}"
-export SS_GNUPG_HOME_PATH
-: "${FORWARDED_ALLOW_IPS:=*}"
-export FORWARDED_ALLOW_IPS
-cd /src/hack/submodules/archivematica-storage-service/src
-exec s6-setuidgid archivematica \
+cd /src/hack/submodules/archivematica-storage-service/src \
   /venv-ss/bin/python3 \
-  -m gunicorn \
-  --config=/src/hack/submodules/archivematica-storage-service/install/storage-service.gunicorn-config.py \
-  archivematica.storage_service.storage_service.wsgi:application
+    -m gunicorn \
+    --config=/src/hack/submodules/archivematica-storage-service/install/storage-service.gunicorn-config.py \
+    archivematica.storage_service.storage_service.wsgi:application
