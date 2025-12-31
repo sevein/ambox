@@ -1,2 +1,11 @@
 #!/command/execlineb -P
-/command/with-contenv /bin/sh -e /etc/s6-overlay/s6-rc.d/am-ready/up.sh
+
+foreground {
+  s6-setuidgid archivematica
+  wait-http.sh http://127.0.0.1:8001/ 60 0.5
+}
+
+foreground {
+  s6-setuidgid archivematica
+  wait-http.sh http://127.0.0.1:8002/ 60 0.5
+}
