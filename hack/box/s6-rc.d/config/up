@@ -1,2 +1,32 @@
 #!/command/execlineb -P
-/command/with-contenv /bin/bash -e /etc/s6-overlay/s6-rc.d/config/up.sh
+
+with-contenv
+
+define CONFIG_DIR /var/archivematica/sharedDirectory/sharedMicroServiceTasksConfigs/processingMCPConfigs
+
+foreground {
+  s6-setuidgid archivematica
+  /usr/local/bin/wait-http.sh http://127.0.0.1:64080 60 0.5
+}
+
+foreground {
+  s6-setuidgid archivematica
+  /usr/local/bin/wait-file.sh ${CONFIG_DIR}/defaultProcessingMCP.xml
+}
+
+foreground {
+  s6-setuidgid archivematica
+  /usr/local/bin/wait-file.sh ${CONFIG_DIR}/automatedProcessingMCP.xml
+}
+
+importas -D /etc/ambox/config.yaml -u AMBOX_CONFIG_FILE AMBOX_CONFIG_FILE
+
+s6-setuidgid archivematica
+s6-env \
+  HOME=/var/archivematica \
+  UV_CACHE_DIR=/var/archivematica/.cache/uv \
+    /usr/local/bin/uv run /src/hack/box/config/loader.py \
+      --config ${AMBOX_CONFIG_FILE} \
+      --output-dir ${CONFIG_DIR} \
+      --workflow /src/src/archivematica/MCPServer/assets/workflow.json \
+      --schema /src/hack/box/config/schema.json
