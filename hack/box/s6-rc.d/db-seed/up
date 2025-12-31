@@ -1,2 +1,81 @@
-#!/bin/sh
-exec /etc/s6-overlay/s6-rc.d/db-seed/up.sh
+#!/command/execlineb -P
+
+with-contenv
+
+# Exit early if AM_DB_SEED is explicitly disabled.
+importas -D "auto" -u AM_DB_SEED AM_DB_SEED
+if -n { test ${AM_DB_SEED} = "0" }
+if -n { test ${AM_DB_SEED} = "false" }
+
+# Exit if already seeded (stamp file exists).
+define SEED_STAMP /var/lib/mysql/.am_db_seeded
+if -n { test -f ${SEED_STAMP} }
+
+# Exit if dump files are not readable (missing or inaccessible).
+define MCP_DUMP /docker-seed/mcp.sql.gz
+define SS_DUMP /docker-seed/ss.sql.gz
+if -n { test ! -r ${MCP_DUMP} }
+if -n { test ! -r ${SS_DUMP} }
+
+foreground {
+  /usr/local/bin/wait-mysql.sh 60 0.5
+}
+
+# Count tables in MCP database to check if already populated.
+backtick MCP_TABLES {
+  pipeline {
+    mysql \
+      --protocol=socket \
+      --socket=/run/mysqld/mysqld.sock \
+      --user=root \
+      --skip-column-names \
+      --silent \
+      --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='MCP';"
+  }
+  tr -d " \t\n"
+}
+importas -u MCP_TABLES MCP_TABLES
+
+# Count tables in SS database to check if already populated.
+backtick SS_TABLES {
+  pipeline {
+    mysql \
+      --protocol=socket \
+      --socket=/run/mysqld/mysqld.sock \
+      --user=root \
+      --skip-column-names \
+      --silent \
+      --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='SS';"
+  }
+  tr -d " \t\n"
+}
+importas -u SS_TABLES SS_TABLES
+
+# Exit if databases are already populated (have tables).
+if -n { test ${MCP_TABLES} -gt 0 }
+if -n { test ${SS_TABLES} -gt 0 }
+
+# Import MCP database dump.
+foreground {
+  pipeline { gunzip -c ${MCP_DUMP} }
+  mysql \
+    --protocol=socket \
+    --socket=/run/mysqld/mysqld.sock \
+    --user=root \
+    --init-command="SET SESSION FOREIGN_KEY_CHECKS=0" \
+    MCP
+}
+
+# Import SS database dump.
+foreground {
+  pipeline { gunzip -c ${SS_DUMP} }
+  mysql \
+    --protocol=socket \
+    --socket=/run/mysqld/mysqld.sock \
+    --user=root \
+    --init-command="SET SESSION FOREIGN_KEY_CHECKS=0" \
+    SS
+}
+
+# Create stamp file to mark successful seed completion.
+install -m 0644 /dev/null ${SEED_STAMP}
