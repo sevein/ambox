@@ -1,2 +1,18 @@
 #!/command/execlineb -P
-/command/with-contenv /bin/sh -e /etc/s6-overlay/s6-rc.d/mysql-init/up.sh
+
+foreground {
+  /usr/local/bin/wait-mysql.sh 60 0.5
+}
+
+foreground {
+  mysql \
+    --protocol=socket \
+    --socket=/run/mysqld/mysqld.sock \
+    --user=root \
+    --execute="CREATE DATABASE IF NOT EXISTS SS;
+CREATE DATABASE IF NOT EXISTS MCP;
+CREATE USER IF NOT EXISTS 'archivematica'@'%' IDENTIFIED BY 'demo';
+GRANT ALL PRIVILEGES ON SS.* TO 'archivematica'@'%';
+GRANT ALL PRIVILEGES ON MCP.* TO 'archivematica'@'%';
+FLUSH PRIVILEGES;"
+}
