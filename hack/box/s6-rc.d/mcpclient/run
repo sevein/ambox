@@ -1,12 +1,6 @@
-#!/bin/sh
-set -e
-export DJANGO_SETTINGS_MODULE=archivematica.MCPClient.settings.common
-: "${ARCHIVEMATICA_MCPCLIENT_MCPCLIENT_SEARCH_ENABLED:=false}"
-export ARCHIVEMATICA_MCPCLIENT_MCPCLIENT_SEARCH_ENABLED
-: "${ARCHIVEMATICA_MCPCLIENT_CLIENT_HOST:=localhost}"
-export ARCHIVEMATICA_MCPCLIENT_CLIENT_HOST
-: "${PYTHONPATH:=/src/src}"
-export PYTHONPATH
-cd /src
-exec s6-setuidgid archivematica \
-  python3 -m archivematica.MCPClient.archivematicaClient
+#!/command/execlineb -P
+
+s6-envdir -f /etc/ambox/envs/mcpclient
+s6-setuidgid archivematica
+
+cd /src /venv/bin/python3 -m archivematica.MCPClient.archivematicaClient
