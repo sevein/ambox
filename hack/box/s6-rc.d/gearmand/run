@@ -1,3 +1,5 @@
-#!/bin/sh
-set -e
-exec s6-setuidgid gearman gearmand --queue-type=builtin --verbose INFO
+#!/command/execlineb
+
+s6-setuidgid gearman
+
+exec /usr/sbin/gearmand --queue-type=builtin --verbose INFO
