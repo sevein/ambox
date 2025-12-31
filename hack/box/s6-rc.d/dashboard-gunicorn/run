@@ -1,34 +1,9 @@
-#!/bin/sh
-set -e
+#!/command/execlineb -P
 
-: "${PYTHONPATH:=/src/src}"
-export PYTHONPATH
+s6-envdir -f /etc/ambox/envs/dashboard
+s6-setuidgid archivematica
 
-: "${AM_DASHBOARD_DJANGO_SETTINGS_MODULE:=archivematica.dashboard.settings.local}"
-: "${DJANGO_SETTINGS_MODULE:=$AM_DASHBOARD_DJANGO_SETTINGS_MODULE}"
-export DJANGO_SETTINGS_MODULE
-
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_ENGINE:=django.db.backends.mysql}"
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE:=MCP}"
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_USER:=archivematica}"
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD:=demo}"
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_HOST:=localhost}"
-: "${ARCHIVEMATICA_DASHBOARD_CLIENT_PORT:=3306}"
-export ARCHIVEMATICA_DASHBOARD_CLIENT_ENGINE
-export ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE
-export ARCHIVEMATICA_DASHBOARD_CLIENT_USER
-export ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD
-export ARCHIVEMATICA_DASHBOARD_CLIENT_HOST
-export ARCHIVEMATICA_DASHBOARD_CLIENT_PORT
-: "${ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED:=false}"
-export ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED
-
-# Nginx binds 64080 and 64081 (for SS). Run dashboard gunicorn on an internal-only
-# port to avoid a bind conflict.
-export AM_GUNICORN_BIND=127.0.0.1:8002
-export FORWARDED_ALLOW_IPS=*
-cd /src
-exec s6-setuidgid archivematica \
-  python3 -m gunicorn \
+cd /src /venv/bin/python3 \
+  -m gunicorn \
   --config=/src/src/archivematica/dashboard/install/dashboard.gunicorn-config.py \
   archivematica.dashboard.wsgi:application
