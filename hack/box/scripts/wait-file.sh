@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# usage: wait-file.sh <file> [timeout_seconds] [interval_seconds]
+# Wait for a file to exist.
+# Usage: wait-file.sh <file> [timeout_seconds] [interval_seconds]
 
-file=$1
-timeout=${2:-30}
-interval=${3:-0.5}
-
-start=$(date +%s)
+readonly file="${1:?wait-file: missing file argument}"
+readonly timeout="${2:-30}"
+readonly interval="${3:-0.5}"
+readonly start=$SECONDS
 
 while true; do
-  if [[ -f "$file" ]]; then
-    exit 0
-  fi
+  [[ -f "$file" ]] && exit 0
 
-  now=$(date +%s)
-  if (( now - start >= timeout )); then
-    echo "wait-file.sh: timeout waiting for $file" >&2
+  if (( SECONDS - start >= timeout )); then
+    echo "wait-file: timeout after ${timeout}s waiting for $file" >&2
     exit 1
   fi
 
