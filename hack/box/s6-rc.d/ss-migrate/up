@@ -1,2 +1,29 @@
 #!/command/execlineb -P
-/command/with-contenv /bin/sh -e /etc/s6-overlay/s6-rc.d/ss-migrate/up.sh
+
+if { test -f /var/lib/mysql/.am_db_seeded } exit 0
+
+foreground {
+  /usr/local/bin/wait-mysql.sh 40 0.5
+}
+
+foreground {
+  s6-envdir -f /etc/ambox/envs/storage
+  s6-setuidgid archivematica
+  cd /src /venv-ss/bin/python3 \
+    /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py \
+    migrate \
+    --noinput
+}
+
+foreground {
+  s6-envdir -f /etc/ambox/envs/storage
+  s6-setuidgid archivematica
+  cd /src /venv-ss/bin/python3 \
+    /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py \
+    create_user \
+    --username=test \
+    --password=test \
+    --email=test@test.com \
+    --api-key=test \
+    --superuser
+}
