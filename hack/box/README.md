@@ -1,14 +1,23 @@
 # ambox
 
 The goal of **ambox** is a one-liner style deployment for local testing and
-development (or lightweight use cases), where Archivematica runs as a
-single, self-contained Linux container environment.
+development (or lightweight use cases), where Archivematica runs as a single,
+self-contained Linux container environment. It also provides some
+configurability via its [config file], letting you customize processing
+configuration details and more.
+
+There are potential improvements still to do, such as more configurability,
+integration with remote storage services, and similar enhancements. A full
+list of ideas is maintained in the [wiki].
+
+[config file]: #configuration-schema
+[wiki]: https://github.com/sevein/ambox/wiki
 
 ## Quick start
 
 Run the image and publish the dashboard on port `8080`:
 
-    docker run --rm -p 8080:64080 ghcr.io/sevein/ambox:test
+    docker run --rm -p 8080:64080 ghcr.io/sevein/ambox:latest
 
 Then open <http://localhost:8080/> in your browser. You're ready to go!
 
