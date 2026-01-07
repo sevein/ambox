@@ -167,7 +167,7 @@ else
     printf '## Container images\n\n'
     printf 'Multi-architecture image available at:\n\n'
     printf -- '- `ghcr.io/sevein/ambox:%s`\n' "$current_tag"
-    printf -- '- `artefactual/ambox:%s`\n\n' "$current_tag"
+    printf -- '- `docker.io/artefactual/ambox:%s`\n\n' "$current_tag"
     printf '## Changelog\n\n'
     printf '%s\n' "${commit_lines[@]}"
     printf '\n%s\n' "$compare_url"
