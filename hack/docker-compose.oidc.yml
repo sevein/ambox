@@ -1,59 +1,10 @@
 ---
-name: am-integration
 
 services:
 
-  mysql:
-    image: "percona/percona-server:8.4.7-7"
-    command: "--character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci"
-    environment:
-      MYSQL_ROOT_PASSWORD: "root"
-      # These are used in the settings.testmysql modules
-      MYSQL_USER: "archivematica"
-      MYSQL_PASSWORD: "demo"
-      MYSQL_DATABASE: "test_DASHBOARDTEST"
-    cap_add:
-      - "SYS_NICE"
-    healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "127.0.0.1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
   archivematica-dashboard:
-    build:
-      context: "../../"
-      dockerfile: "hack/Dockerfile"
-      args:
-        TARGET: "archivematica-dashboard-integration-tests"
-        USER_ID: ${USER_ID:-1000}
-        GROUP_ID: ${GROUP_ID:-1000}
-        UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
-    entrypoint: ""
-    working_dir: "/src"
-    command: ["pytest", "--browser", "firefox", "/src/tests/integration/"]
-    hostname: "archivematica-dashboard"
     environment:
-      PYTEST_ADDOPTS: ${PYTEST_ADDOPTS:-}
-      RUN_INTEGRATION_TESTS: "true"
-      DJANGO_LIVE_TEST_SERVER_ADDRESS: "archivematica-dashboard:8000"
-      DJANGO_ALLOW_ASYNC_UNSAFE: true
-      FORWARDED_ALLOW_IPS: "*"
-      AM_GUNICORN_ACCESSLOG: "/dev/null"
-      DJANGO_SETTINGS_MODULE: "archivematica.dashboard.settings.testmysql"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_GEARMAN_SERVER: "gearmand:4730"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_ELASTICSEARCH_SERVER: "elasticsearch:9200"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_PROMETHEUS_ENABLED: "1"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_USER: "archivematica"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD: "demo"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_HOST: "mysql"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE: "MCP"
-      ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED: "${AM_SEARCH_ENABLED:-true}"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SECURE: "false"
       ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SAMESITE: "Lax"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSRF_COOKIE_SECURE: "false"
       ARCHIVEMATICA_DASHBOARD_OIDC_AUTHENTICATION: "true"
       OIDC_USE_PKCE: "true"
       OIDC_PKCE_CODE_CHALLENGE_METHOD: "S256"
@@ -85,25 +36,64 @@ services:
       OIDC_ACCESS_ATTRIBUTE_MAP_SECONDARY: >
         {"given_name": "first_name", "family_name": "last_name", "realm_access": "realm_access"}
       OIDC_RP_SIGN_ALGO: "RS256"
-    volumes:
-      - "../../:/src"
     depends_on:
-      mysql:
+      elasticsearch:
         condition: service_healthy
-    links:
-      - "mysql"
-      - "keycloak"
+        restart: true
+      keycloak:
+        condition: service_started
+
+  archivematica-storage-service:
+    environment:
+      SESSION_COOKIE_SAMESITE: "Lax"
+      SS_OIDC_AUTHENTICATION: "true"
+      OIDC_USE_PKCE: "true"
+      OIDC_PKCE_CODE_CHALLENGE_METHOD: "S256"
+      OIDC_RP_CLIENT_ID: "am-storage-service"
+      OIDC_RP_CLIENT_SECRET: "example-secret"
+      OIDC_OP_AUTHORIZATION_ENDPOINT: "http://keycloak:8080/realms/demo/protocol/openid-connect/auth"
+      OIDC_OP_TOKEN_ENDPOINT: "http://keycloak:8080/realms/demo/protocol/openid-connect/token"
+      OIDC_OP_USER_ENDPOINT: "http://keycloak:8080/realms/demo/protocol/openid-connect/userinfo"
+      OIDC_OP_JWKS_ENDPOINT: "http://keycloak:8080/realms/demo/protocol/openid-connect/certs"
+      OIDC_OP_LOGOUT_ENDPOINT: "http://keycloak:8080/realms/demo/protocol/openid-connect/logout"
+      OIDC_OP_SET_ROLES_FROM_CLAIMS: "true"
+      OIDC_OP_ROLE_CLAIM_PATH: "realm_access.roles"
+      OIDC_ROLE_CLAIM_ADMIN: "admin"
+      OIDC_ROLE_CLAIM_MANAGER: "manager"
+      OIDC_ROLE_CLAIM_REVIEWER: "reviewer"
+      OIDC_ROLE_CLAIM_READER: "reader"
+      OIDC_ACCESS_ATTRIBUTE_MAP: >
+        {"given_name": "first_name", "family_name": "last_name", "realm_access": "realm_access"}
+      OIDC_SECONDARY_PROVIDER_NAMES: "secondary"
+      OIDC_RP_CLIENT_ID_SECONDARY: "am-storage-service-secondary"
+      OIDC_RP_CLIENT_SECRET_SECONDARY: "example-secret-secondary"
+      OIDC_OP_AUTHORIZATION_ENDPOINT_SECONDARY: "http://keycloak:8080/realms/secondary/protocol/openid-connect/auth"
+      OIDC_OP_TOKEN_ENDPOINT_SECONDARY: "http://keycloak:8080/realms/secondary/protocol/openid-connect/token"
+      OIDC_OP_USER_ENDPOINT_SECONDARY: "http://keycloak:8080/realms/secondary/protocol/openid-connect/userinfo"
+      OIDC_OP_JWKS_ENDPOINT_SECONDARY: "http://keycloak:8080/realms/secondary/protocol/openid-connect/certs"
+      OIDC_OP_LOGOUT_ENDPOINT_SECONDARY: "http://keycloak:8080/realms/secondary/protocol/openid-connect/logout"
+      OIDC_OP_SET_ROLES_FROM_CLAIMS_SECONDARY: "true"
+      OIDC_OP_ROLE_CLAIM_PATH_SECONDARY: "realm_access.roles"
+      OIDC_ROLE_CLAIM_ADMIN_SECONDARY: "admin-secondary"
+      OIDC_ROLE_CLAIM_MANAGER_SECONDARY: "manager-secondary"
+      OIDC_ROLE_CLAIM_REVIEWER_SECONDARY: "reviewer-secondary"
+      OIDC_ROLE_CLAIM_READER_SECONDARY: "reader-secondary"
+      OIDC_ACCESS_ATTRIBUTE_MAP_SECONDARY: >
+        {"given_name": "first_name", "family_name": "last_name", "realm_access": "realm_access"}
+      OIDC_RP_SIGN_ALGO: "RS256"
+    depends_on:
+      keycloak:
+        condition: service_started
 
   keycloak:
     image: "quay.io/keycloak/keycloak:26.5.0-0"
     command: ["start-dev", "--import-realm"]
-    restart: "unless-stopped"
     environment:
       KEYCLOAK_ADMIN: "admin"
       KEYCLOAK_ADMIN_PASSWORD: "admin"
-      KC_METRICS_ENABLED: true
+      KC_METRICS_ENABLED: "true"
       KC_LOG_LEVEL: "INFO"
     ports:
-      - 8080:8080
+      - "8080:8080"
     volumes:
       - "./etc/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"

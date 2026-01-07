@@ -12,20 +12,6 @@ if "RUN_INTEGRATION_TESTS" not in os.environ:
     pytest.skip("Skipping integration tests", allow_module_level=True)
 
 
-@pytest.fixture
-def user(django_user_model: type[User]) -> User:
-    user = django_user_model.objects.create(
-        username="foobar",
-        email="foobar@example.com",
-        first_name="Foo",
-        last_name="Bar",
-    )
-    user.set_password("foobar1A,")
-    user.save()
-
-    return user
-
-
 @pytest.mark.django_db
 def test_oidc_backend_creates_local_user(
     page: Page,
@@ -226,7 +212,7 @@ def test_logging_out_logs_out_user_from_secondary_provider_admin_role(
 
     # Logging out redirects the user to the login url.
     page.get_by_text("supportadmin@example.com").click()
-    page.get_by_role("link", name="Log out").click()
+    page.get_by_role("button", name="Log out").click()
     assert page.url == f"{live_server.url}{reverse('accounts:login')}"
 
     # Logging in through the OIDC provider requires to authenticate again.
@@ -259,7 +245,7 @@ def test_logging_out_logs_out_user_from_secondary_provider_default_role(
 
     # Logging out redirects the user to the login url.
     page.get_by_text("supportdefault@example.com").click()
-    page.get_by_role("link", name="Log out").click()
+    page.get_by_role("button", name="Log out").click()
     assert page.url == f"{live_server.url}{reverse('accounts:login')}"
 
     # Logging in through the OIDC provider requires to authenticate again.
