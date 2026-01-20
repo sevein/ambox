@@ -27,9 +27,7 @@ DEFAULT_OUTPUT_DIR = (
     "/var/archivematica/sharedDirectory/sharedMicroServiceTasksConfigs/"
     "processingMCPConfigs"
 )
-DEFAULT_WORKFLOW_PATHS = (
-    "/src/src/archivematica/MCPServer/assets/workflow.json",
-)
+DEFAULT_WORKFLOW_PATHS = ("/src/src/archivematica/MCPServer/assets/workflow.json",)
 DEFAULT_SCHEMA_PATH = Path(__file__).with_name("schema.json")
 
 
