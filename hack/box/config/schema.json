@@ -388,6 +388,18 @@
       ],
       "description": "Schema version for this config file."
     },
+    "sftpgo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the SFTPGo private host key file."
+        }
+      },
+      "description": "SFTPGo configuration overrides."
+    },
     "processing": {
       "type": "object",
       "additionalProperties": false,

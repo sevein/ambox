@@ -1,0 +1,13 @@
+version: v1
+sftpgo:
+  host_key: /etc/ambox/sftpgo_host_key
+processing:
+  configs:
+    - name: automated
+      extends: automated
+      config:
+        normalize: do_not_normalize
+    - name: demo
+      extends: default
+      config:
+        virus_scanning: false

@@ -1,10 +1,24 @@
 #!/command/execlineb -P
 
+importas -D /etc/ambox/config.yaml -u AMBOX_CONFIG_FILE AMBOX_CONFIG_FILE
+
+foreground {
+  s6-setuidgid archivematica
+  s6-env \
+    HOME=/var/archivematica \
+    UV_CACHE_DIR=/var/archivematica/.cache/uv \
+      /src/hack/box/config/sftpgo_config.py \
+        --config ${AMBOX_CONFIG_FILE} \
+        --base-config /etc/sftpgo/sftpgo.json \
+        --output /var/lib/sftpgo/sftpgo.json \
+        --config-dir /var/lib/sftpgo
+}
+
 s6-setuidgid archivematica
 
 sftpgo serve \
   --config-dir /var/lib/sftpgo \
-  --config-file /etc/sftpgo/sftpgo.json \
+  --config-file /var/lib/sftpgo/sftpgo.json \
   --loaddata-from /etc/sftpgo/initial-data.json \
   --log-level warn \
   --log-file-path "" \

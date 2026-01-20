@@ -98,9 +98,9 @@ Useful interactive commands once connected:
 
 At boot, ambox reads a config document from `/etc/ambox/config.yaml`, falling
 back to the bundled default in [`config/ambox.yaml`](config/ambox.yaml).
-Today the document can populate processing configurations; additional config
-types are planned. The JSON Schema is in [`config/schema.json`]. You can
-override the config path with `AMBOX_CONFIG_FILE`.
+The document can populate processing configurations and optional SFTPGo
+settings. The JSON Schema is in [`config/schema.json`]. You can override the
+config path with `AMBOX_CONFIG_FILE`.
 
 Example config that extends the bundled defaults, adds an automated override,
 and defines a full "demo" configuration:
@@ -118,6 +118,16 @@ processing:
       config:
         virus_scanning: false
         bind_pids: true
+```
+
+To pin a static SFTP host key, provide the path to a private key file that is
+readable by the `archivematica` user inside the container. The file must exist
+at container start, or the SFTP service will fail to boot.
+
+```yaml
+version: v1
+sftpgo:
+  host_key: /etc/ambox/sftpgo_host_key
 ```
 
 [`config/ambox.yaml`]: config/ambox.yaml
@@ -149,6 +159,10 @@ simplicity and portability over composability:
 Build and run the image locally:
 
     make run
+
+The bundled `hack/box/Makefile` mounts `test/ambox.yaml` and the SFTP test
+keys under `test/` to simplify local development. Adjust those mounts if you
+want different config or key paths.
 
 To create a new release, update the version number and run the release workflow
 command below (example uses v1.0.1):
