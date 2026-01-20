@@ -22,11 +22,6 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq is required" >&2
-  exit 1
-fi
-
 current_tag=""
 repo_arg=""
 title=""
@@ -128,19 +123,35 @@ if [[ -z "$title" ]]; then
   title="$current_tag"
 fi
 
-release_json="$(gh release list --repo "$repo" --limit 10 --json tagName)"
-previous_tag="$(jq -r --arg current "$current_tag" 'map(.tagName) | map(select(. != $current)) | .[0] // empty' <<<"$release_json")"
+if ! git rev-parse "$current_tag^{commit}" >/dev/null 2>&1; then
+  echo "Tag $current_tag is not available locally" >&2
+  exit 1
+fi
+
+upstream_repo="artefactual/archivematica"
+upstream_branch="qa/1.x"
+upstream_url="https://github.com/${upstream_repo}.git"
+if git remote get-url upstream >/dev/null 2>&1; then
+  current_upstream_url="$(git remote get-url upstream)"
+  if [[ "$current_upstream_url" != "$upstream_url" ]]; then
+    git remote set-url upstream "$upstream_url"
+  fi
+else
+  git remote add upstream "$upstream_url"
+fi
+git fetch --no-tags upstream "${upstream_branch}"
+
+if [[ "$current_tag" == *-* ]]; then
+  previous_tag="$(git describe --tags --abbrev=0 --match '[0-9]*' "${current_tag}^" 2>/dev/null || true)"
+else
+  previous_tag="$(git describe --tags --abbrev=0 --match '[0-9]*' --exclude '*-*' "${current_tag}^" 2>/dev/null || true)"
+fi
 notes_file="$(mktemp -t release-notes.XXXXXX)"
 
 if [[ -z "$previous_tag" ]]; then
   : >"$notes_file"
   echo "No previous release tag found for $current_tag; creating empty release notes"
 else
-  if ! git rev-parse "$current_tag^{commit}" >/dev/null 2>&1; then
-    echo "Tag $current_tag is not available locally" >&2
-    exit 1
-  fi
-
   if ! git rev-parse "$previous_tag^{commit}" >/dev/null 2>&1; then
     echo "Tag $previous_tag is not available locally" >&2
     exit 1
@@ -149,18 +160,18 @@ else
   compare_url="https://github.com/${repo}/compare/${previous_tag}...${current_tag}"
 
   commit_lines=()
-  while IFS=$'\t' read -r sha title_line login name; do
+  while IFS=$'\t' read -r sha title_line author; do
     [[ -z "$sha" ]] && continue
-    author="$name"
-    if [[ -n "$login" ]]; then
-      author="@$login"
-    fi
     commit_lines+=("* $sha: $title_line ($author)")
-  done < <(gh api "repos/${repo}/compare/${previous_tag}...${current_tag}" \
-    --jq '.commits[] | [.sha[0:7], (.commit.message | split("\n")[0]), (.author.login // ""), (.commit.author.name // "")] | @tsv')
+  done < <(git log --format='%h%x09%s%x09%an' "${previous_tag}..${current_tag}" \
+    --not "upstream/${upstream_branch}")
 
   if [[ ${#commit_lines[@]} -eq 0 ]]; then
-    commit_lines+=("* No commits between ${previous_tag} and ${current_tag}")
+    if [[ -n "$upstream_repo" ]]; then
+      commit_lines+=("* No fork-only commits between ${previous_tag} and ${current_tag}")
+    else
+      commit_lines+=("* No commits between ${previous_tag} and ${current_tag}")
+    fi
   fi
 
   {
