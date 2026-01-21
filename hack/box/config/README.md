@@ -8,11 +8,50 @@ If you only need the quick start, see `hack/box/README.md`. This document is
 the detailed reference for the configuration schema, including the processing
 configuration options and how they map to Archivematica decisions.
 
+## Example configuration
+
+```yaml
+# ambox config (YAML). Lines starting with # are comments.
+version: v1
+
+# Optional: override the SFTPGo host key.
+sftpgo:
+  # Absolute path, or a path relative to /var/lib/sftpgo inside the container.
+  host_key: /etc/ambox/sftpgo_host_key
+
+processing:
+  configs:
+    # Example 1: build on the default processing config and override a few
+    # decisions for an "automated" profile.
+    - name: automated
+      extends: default
+      config:
+        virus_scanning: false
+        normalize: do_not_normalize
+
+    # Example 2: extend the automated base and tweak storage decisions.
+    - name: demo
+      extends: automated
+      config:
+        store_aip: true
+        store_aip_location: default
+        upload_dip: do_not_upload
+
+    # Example 3: supply a full processingMCP.xml directly.
+    - name: custom_xml
+      source:
+        type: file
+        value: /etc/ambox/processingMCP.xml
+```
+
 ## Where the config is read from
 
-At container boot, ambox reads `/etc/ambox/config.yaml`. If it does not exist,
-it falls back to the bundled defaults in `hack/box/config/ambox.yaml`. You can
-override the path with the `AMBOX_CONFIG_FILE` environment variable.
+At container boot, ambox reads `/etc/ambox/config.yaml`. You can override the
+path with the `AMBOX_CONFIG_FILE` environment variable. If no config file is
+present, ambox proceeds without applying extra configuration (the schema
+defaults and Archivematica defaults apply). The repository ships with
+`hack/box/config/ambox.yaml` as a reference template; it is not loaded
+automatically.
 
 ## Schema versioning
 
@@ -36,8 +75,9 @@ Overrides for the embedded SFTPGo service.
 
 - Type: object.
 - Properties:
-  - `host_key` (string, required if `sftpgo` is present)
-    - Absolute path to the SFTPGo private host key file.
+  - `host_key` (string, optional)
+    - Path to the SFTPGo private host key file (absolute, or relative to
+      `/var/lib/sftpgo` inside the container).
     - The file must exist and be readable by the `archivematica` user at
       container startup, or the SFTP service will fail to boot.
 
@@ -63,16 +103,8 @@ Controls processing configuration XMLs generated at boot.
 
 Processing configurations automate decision points in the Transfer and Ingest
 workflows in Archivematica. In the dashboard UI, these are configured under
-Administration > Processing configuration. Archivematica ships with two
-processing configurations, `default` and `automated`. `default` is used when a
-transfer is started manually (or when no other config is selected), while
-`automated` is used for some externally automated transfers and can also be
-selected in the Transfer tab. You can add more configurations for different
-content types. ambox uses your YAML config to generate `processingMCP.xml`
-files that mirror those choices. Alternate processing configs are used during
-re-ingest, or by placing a `processingMCP.xml` at the top level of a transfer
-to drive decisions for that transfer; otherwise, the default configuration is
-used.
+Administration > Processing configuration. ambox uses your YAML config to
+generate `processingMCP.xml` files that mirror those choices.
 
 For the canonical, user-facing descriptions of each decision point, see the
 [Archivematica documentation].
