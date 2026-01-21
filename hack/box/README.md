@@ -99,8 +99,9 @@ Useful interactive commands once connected:
 At boot, ambox reads a config document from `/etc/ambox/config.yaml`, falling
 back to the bundled default in [`config/ambox.yaml`](config/ambox.yaml).
 The document can populate processing configurations and optional SFTPGo
-settings. The JSON Schema is in [`config/schema.json`]. You can override the
-config path with `AMBOX_CONFIG_FILE`.
+settings. The JSON Schema is in [`config/schema.json`] and the full reference
+guide is in [`config/README.md`]. You can override the config path with
+`AMBOX_CONFIG_FILE`.
 
 Example config that extends the bundled defaults, adds an automated override,
 and defines a full "demo" configuration:
@@ -132,6 +133,7 @@ sftpgo:
 
 [`config/ambox.yaml`]: config/ambox.yaml
 [`config/schema.json`]: config/schema.json
+[`config/README.md`]: config/README.md
 
 ## How it works
 
