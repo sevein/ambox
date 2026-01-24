@@ -16,8 +16,6 @@
 !/hack/submodules/archivematica-sampledata/SampleTransfers/Images/**
 
 # Exclude
-src/archivematica/dashboard/frontend/node_modules
-src/archivematica/dashboard/media/js/build
 **/*~
 **/*.log
 **/node_modules
