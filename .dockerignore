@@ -1,7 +1,20 @@
-# Ignore everything
+# Ignore everything by default, then allowlist only what the image build needs.
+#
+# Docker/BuildKit checks COPY source paths against `.dockerignore` at the path
+# level. Re-including only `dir/**` may include files under that directory but
+# still leave the directory path itself (`dir`) treated as ignored.
+# When the Dockerfile uses `COPY dir ...`, BuildKit can emit `CopyIgnoredFile`
+# warnings even if the build succeeds.
+#
+# To avoid that, paths copied as directories are re-included twice:
+# `!/dir` (directory entry) and `!/dir/**` (contents). The same applies to
+# nested parents (for example `!/hack` and `!/hack/submodules`).
+
+# Ignore everything.
 **
 
-# Include
+# Include.
+!/src
 !/src/**
 !/pyproject.toml
 !/requirements*
@@ -10,12 +23,17 @@
 !/TRADEMARK
 
 # Includes only used by ambox.
+# Parent directories are explicitly re-included to avoid `CopyIgnoredFile`
+# warnings for `COPY hack/...` paths in `hack/box/Dockerfile`.
+!/hack
 !/hack/box/**
+!/hack/submodules
+!/hack/submodules/archivematica-storage-service
 !/hack/submodules/archivematica-storage-service/**
 !/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV/**
 !/hack/submodules/archivematica-sampledata/SampleTransfers/Images/**
 
-# Exclude
+# Exclude.
 **/*~
 **/*.log
 **/node_modules

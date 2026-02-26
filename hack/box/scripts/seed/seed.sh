@@ -34,15 +34,15 @@ echo "seed-mysql: creating databases and user..."
 mysql --protocol=socket --socket="$SOCKET_PATH" -uroot --execute="CREATE DATABASE IF NOT EXISTS SS; CREATE DATABASE IF NOT EXISTS MCP; CREATE USER IF NOT EXISTS 'archivematica'@'%' IDENTIFIED BY 'demo'; GRANT ALL PRIVILEGES ON SS.* TO 'archivematica'@'%'; GRANT ALL PRIVILEGES ON MCP.* TO 'archivematica'@'%'; FLUSH PRIVILEGES;"
 
 echo "seed-mysql: running Storage Service migrations..."
-su -s /bin/bash archivematica -c 's6-envdir /etc/ambox/envs/storage \
+su -s /bin/bash archivematica -c '/command/s6-envdir /etc/ambox/envs/storage \
   /venv-ss/bin/python /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py migrate --noinput'
 
-su -s /bin/bash archivematica -c 's6-envdir /etc/ambox/envs/storage \
+su -s /bin/bash archivematica -c '/command/s6-envdir /etc/ambox/envs/storage \
   /venv-ss/bin/python /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/manage.py create_user \
     --username="test" --password="test" --email="test@test.com" --api-key="test" --superuser'
 
 echo "seed-mysql: starting SS gunicorn for dashboard install..."
-su -s /bin/bash archivematica -c 's6-envdir /etc/ambox/envs/storage \
+su -s /bin/bash archivematica -c '/command/s6-envdir /etc/ambox/envs/storage \
   /venv-ss/bin/python -m gunicorn \
     --config=/src/hack/submodules/archivematica-storage-service/install/storage-service.gunicorn-config.py \
     archivematica.storage_service.storage_service.wsgi:application' &
@@ -54,11 +54,11 @@ if ! /usr/local/bin/wait-http.sh http://127.0.0.1:8001/ 60 0.5; then
 fi
 
 echo "seed-mysql: running Dashboard migrations/install..."
-su -s /bin/bash archivematica -c 's6-envdir /etc/ambox/envs/dashboard \
-  cd /src && /venv/bin/python src/archivematica/dashboard/manage.py migrate --noinput'
+su -s /bin/bash archivematica -c 'cd /src && /command/s6-envdir /etc/ambox/envs/dashboard \
+  /venv/bin/python src/archivematica/dashboard/manage.py migrate --noinput'
 
-su -s /bin/bash archivematica -c 's6-envdir /etc/ambox/envs/dashboard \
-  cd /src && /venv/bin/python src/archivematica/dashboard/manage.py install \
+su -s /bin/bash archivematica -c 'cd /src && /command/s6-envdir /etc/ambox/envs/dashboard \
+  /venv/bin/python src/archivematica/dashboard/manage.py install \
     --username="test" --password="test" --email="test@test.com" \
     --org-name="test" --org-id="test" --api-key="test" \
     --ss-url="http://127.0.0.1:8001" --ss-user="test" --ss-api-key="test" \

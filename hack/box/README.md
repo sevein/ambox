@@ -158,9 +158,16 @@ simplicity and portability over composability:
 
 ## Development
 
-Build and run the image locally:
+Build a local seed cache image, then build and run the image locally:
 
+    make seed-cache-local
     make run
+
+The local `Makefile` defaults to `SEED_CACHE_IMAGE=ambox-build-cache-local`, so
+`make seed-cache-local`, `make build`, and `make run` use the same seed cache
+repo automatically. `make seed-cache-local` first tries to reuse a matching
+remote seed cache tag and falls back to building the seed locally if none
+exists. Re-run it after migration changes.
 
 The bundled `hack/box/Makefile` mounts `test/ambox.yaml` and the SFTP test
 keys under `test/` to simplify local development. Adjust those mounts if you
