@@ -5,7 +5,6 @@ ARG UBUNTU_VERSION=noble-20251013
 ARG S6_OVERLAY_VERSION=3.2.1.0
 ARG PYTHON_VERSION=3.10.19
 ARG UV_VERSION=0.9.18
-ARG NODE20_VERSION=20.19.6
 ARG NODE24_VERSION=24.12.0
 ARG SFTPGO_VERSION=2.7.0
 ARG MEDIAAREA_VERSION=1.0-25
@@ -122,17 +121,6 @@ RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=$
 	&& uv venv --python ${PYTHON_VERSION} /venv-ss \
 	&& uv pip install --python /venv-ss/bin/python -r /requirements-ss.txt
 
-# frontend-builder provides the frontend assets.
-#
-# -----------------------------------------------------------------------------
-FROM node:${NODE20_VERSION} AS frontend-builder
-WORKDIR /src/src/archivematica/dashboard/frontend
-COPY --link src/archivematica/dashboard/frontend/package.json /src/src/archivematica/dashboard/frontend/package.json
-COPY --link src/archivematica/dashboard/frontend/package-lock.json /src/src/archivematica/dashboard/frontend/package-lock.json
-RUN npm clean-install --ignore-scripts
-COPY --link src/archivematica/dashboard/frontend /src/src/archivematica/dashboard/frontend
-RUN npm run prepare
-
 # vue-builder provides the Vue.js frontend assets.
 #
 # -----------------------------------------------------------------------------
@@ -142,6 +130,7 @@ COPY --link src/archivematica/dashboard/vue/package.json /src/src/archivematica/
 COPY --link src/archivematica/dashboard/vue/package-lock.json /src/src/archivematica/dashboard/vue/package-lock.json
 RUN npm clean-install --ignore-scripts
 COPY --link src/archivematica/dashboard/vue /src/src/archivematica/dashboard/vue
+COPY --link src/archivematica/dashboard/media/images /src/src/archivematica/dashboard/media/images
 RUN npm run build
 
 # seedcache-empty is a placeholder stage that provides an empty seed cache.
@@ -337,7 +326,6 @@ RUN set -ex \
 	' \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
-COPY --from=frontend-builder --link /src/src/archivematica/dashboard/media/js/ /src/src/archivematica/dashboard/media/js/
 COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/src/archivematica/dashboard/vue/dist
 
 ENV PATH="/venv/bin:$PATH"
@@ -360,7 +348,6 @@ RUN set -ex \
 	' \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
-COPY --from=frontend-builder --link /src/src/archivematica/dashboard/media/js/ /src/src/archivematica/dashboard/media/js/
 COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/src/archivematica/dashboard/vue/dist
 
 ENV PATH="/venv/bin:$PATH"

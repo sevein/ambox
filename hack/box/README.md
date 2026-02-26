@@ -277,13 +277,12 @@ Understanding these stages helps when making changes or debugging build issues.
 | `uv` | ghcr.io/astral-sh/uv | Provides uv binary for Python management |
 | `base` | ubuntu:noble | Foundation with locale setup and archivematica user |
 | `python-builder` | base, uv | Builds Python virtual environments for AM and SS |
-| `frontend-builder` | node:20 | Compiles Dashboard frontend assets (legacy JS) |
 | `vue-builder` | node:24 | Compiles Dashboard Vue.js frontend |
 | `seedcache-empty` | scratch | Empty placeholder stage (dev/testing only) |
 | `seedcache` | ${AM_SEED_CACHE_IMAGE} | Provides SQL database dumps from external artifact |
 | `runtime-base` | base, uv, python-builder | Runtime with all system packages and Python venvs |
-| `source` | runtime-base, frontend-builder, vue-builder | Adds full source code and compiled frontend assets |
-| `assets` | runtime-base, frontend-builder, vue-builder | Generates Django static assets and translations |
+| `source` | runtime-base, vue-builder | Adds full source code and compiled frontend assets |
+| `assets` | runtime-base, vue-builder | Generates Django static assets and translations |
 | `seed-builder` | source | Generates seed dumps (used in CI to create seed cache) |
 | `runtime` | source, seedcache, assets | **Final stage** - combines everything for distribution |
 
@@ -302,7 +301,6 @@ flowchart TB
     uv["uv<br/><small>uv binary</small>"]
     base["base<br/><small>Ubuntu foundation + archivematica user</small>"]
     python_builder["python-builder<br/><small>Python venvs for AM and SS</small>"]
-    frontend_builder["frontend-builder<br/><small>Legacy Dashboard frontend</small>"]
     vue_builder["vue-builder<br/><small>Vue.js Dashboard frontend</small>"]
     seedcache_empty["seedcache-empty<br/><small>Empty placeholder</small>"]
     seedcache["seedcache<br/><small>SQL dumps from artifact</small>"]
@@ -316,7 +314,6 @@ flowchart TB
   %% External dependencies
   uv_ext --> uv
   ubuntu --> base
-  node20 --> frontend_builder
   node24 --> vue_builder
   scratch --> seedcache_empty
   seed_arg --> seedcache
@@ -328,10 +325,8 @@ flowchart TB
   python_builder --> runtime_base
   uv --> runtime_base
   runtime_base --> source
-  frontend_builder --> source
   vue_builder --> source
   runtime_base --> assets
-  frontend_builder --> assets
   vue_builder --> assets
   source --> seed_builder
   source --> runtime
@@ -347,7 +342,7 @@ flowchart TB
 
   class uv_ext,ubuntu,node20,node24,scratch,seed_arg external
   class runtime final
-  class uv,base,python_builder,frontend_builder,vue_builder,seedcache_empty,seedcache,runtime_base,source,assets,seed_builder intermediate
+  class uv,base,python_builder,vue_builder,seedcache_empty,seedcache,runtime_base,source,assets,seed_builder intermediate
 ```
 
 The `runtime` stage is what gets tagged and published.
