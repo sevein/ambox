@@ -32,6 +32,9 @@ class Job(metaclass=abc.ABCMeta):
     STATUS_EXECUTING_COMMANDS = models.Job.STATUS_EXECUTING_COMMANDS
     STATUS_FAILED = models.Job.STATUS_FAILED
 
+    # Whether this job type writes rows in the Tasks table.
+    produces_tasks = False
+
     def __init__(self, job_chain, link, package):
         self.uuid = uuid.uuid4()
         self.job_chain = job_chain
@@ -77,7 +80,6 @@ class Job(metaclass=abc.ABCMeta):
             unittype=self.package.JOB_UNIT_TYPE,
             microservicegroup=self.group,
             createdtime=self.created_at,
-            createdtimedec=float(self.created_at.strftime("0.%f")),
             microservicechainlink=self.link.id,
         )
 

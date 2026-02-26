@@ -186,7 +186,7 @@ def get_unit_status(unit_uuid, unit_type):
     unit_jobs = (
         models.Job.objects.filter(sipuuid=unit_uuid)
         .filter(unittype=unit_type)
-        .order_by("-createdtime", "-createdtimedec")
+        .order_by("-createdtime", "-jobuuid")
     )
     # tentatively choose the job with the latest created time to be the current/last for the unit
     job = unit_jobs[0]
@@ -215,6 +215,7 @@ def get_unit_status(unit_uuid, unit_type):
         if sips:
             ret["status"] = "COMPLETE"
             ret["sip_uuid"] = str(sips[0]["sip"])
+    # Legacy compatibility for pre-1.19 transfers that completed via backlog.
     elif (
         models.Job.objects.filter(sipuuid=unit_uuid)
         .filter(jobtype="Move transfer to backlog")

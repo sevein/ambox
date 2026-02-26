@@ -28,17 +28,11 @@
 
 #object_pane_search, #resource_pane_search {
   width: 210px;
-  margin-bottom:10px;
+  margin-bottom: 10px;
 }
 
 #object_pane_search > input, #resource_pane_search > input {
-  margin-right:5px;
-}
-
-#button_pane {
-  width: 65px;
-  float: left;
-  margin-right: 20px;
+  margin-right: 5px;
 }
 
 #match_pane {
@@ -54,8 +48,4 @@
 
 .atk-matcher-disabled-object-label {
   color: #aaa;
-}
-
-#finish_matching {
-  margin-bottom: 1em;
 }

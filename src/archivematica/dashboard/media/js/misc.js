@@ -17,149 +17,62 @@ You should have received a copy of the GNU General Public License
 along with Archivematica.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-Date.prototype.getArchivematicaDateTime = function()
-  {
-    return this.getArchivematicaDateString();
-  };
-
-Date.prototype.getArchivematicaDateString = function()
-  {
-    var pad = function (n)
-      {
-        return n < 10 ? '0' + n : n;
-      }
-
-    var dateText = this.getFullYear()
-      + '-' + pad(this.getMonth() + 1)
-      + '-' + pad(this.getDate())
-      + ' ' + pad(this.getHours())
-      + ':' + pad(this.getMinutes());
-
-    if (dateText == 'NaN-NaN-NaN NaN:NaN') {
-      dateText = '';
-    }
-
-    return dateText;
-  };
-
+// Converts a Unix timestamp in seconds to a local datetime string formatted as
+// "YYYY-MM-DD HH:mm".
+// TODO: use Intl.DateTimeFormat instead of manual formatting.
 function timestampToLocal(timestamp) {
-  // convert to milliseconds
-  'use strict';
   var date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
 
-  return date.getArchivematicaDateString();
+  const pad = (n) => String(n).padStart(2, '0');
+
+  const datePart = [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join('-');
+
+  const timePart = [
+    pad(date.getHours()),
+    pad(date.getMinutes())
+  ].join(':');
+
+  return `${datePart} ${timePart}`;
 }
 
+// Converts an ISO datetime string to a localized date-time string.
 function datetimeToLocal(dt) {
-  // Converts an ISO formatted string to localtime
-  'use strict';
   var date = new Date(dt);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
   return date.toLocaleString();
 }
 
+// Localizes the text of .timestamp and .datetime elements.
 function localizeTimestampElements() {
-  'use strict';
   $('.timestamp').each(function() {
-    $(this).text(timestampToLocal($(this).text()));
+    const $el = $(this);
+    $el.text(timestampToLocal($el.text()));
   });
+
   $('.datetime').each(function() {
-    $(this).text(datetimeToLocal($(this).text()));
+    const $el = $(this);
+    $el.text(datetimeToLocal($el.text()));
   });
 }
 
-function setCookie(c_name, value, exdays) {
-  var exdate=new Date();
-  exdate.setDate(exdate.getDate() + exdays);
-  var c_value=escape(value) + ((exdays==null) ? "" : "; expires="+exdate.toUTCString());
-  document.cookie=c_name + "=" + c_value;
-}
-
-function getCookie(c_name) {
-  var i,x,y,ARRcookies=document.cookie.split(";");
-  for (i=0;i<ARRcookies.length;i++) {
-    x=ARRcookies[i].substr(0,ARRcookies[i].indexOf("="));
-    y=ARRcookies[i].substr(ARRcookies[i].indexOf("=")+1);
-    x=x.replace(/^\s+|\s+$/g,"");
-    if (x==c_name) {
-      return unescape(y);
+// Returns the value of the cookie with the given name, or undefined.
+function getCookie(name) {
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [key, ...rest] = cookie.split('=');
+    if (key.trim() === name) {
+      return decodeURIComponent(rest.join('='));
     }
   }
+
+  return undefined;
 }
-
-function getURLParameter(name) {
-  var value = decodeURI(
-    (RegExp(name + '=' + '(.+?)(&|$)').exec(location.search)||[,null])[1]
-  );
-  return (value == 'null') ? false : value;
-}
-
-function reloadPageableElement(destinationDomElement, url, page) {
-  $.ajax({
-    type: 'GET',
-    cache: false,
-    data: {
-      'page': page
-    },
-    success: function(data)
-      {
-        $(destinationDomElement).html(data);
-        localizeTimestampElements();
-      },
-    url: url
-  });
-}
-
-$(document).ready(
-  function()
-    {
-      $('.preview-help-text')
-
-        // Preview text
-        .children('.preview')
-          .show()
-          .children('a')
-            .click(function(event)
-              {
-                event.preventDefault();
-                $(this).closest('.preview').hide();
-                $(this).closest('.preview-help-text').children('.content').show();
-              })
-          .end()
-        .end()
-
-        // Content
-        .children('.content')
-          .hide()
-          .append(' <a href="#">(collapse)</a>')
-          .children('a')
-            .click(function(event)
-              {
-                event.preventDefault();
-                $(this).closest('.content').hide();
-                $(this).closest('.preview-help-text').children('.preview').show();
-              });
-
-      // Set up the button which allows users to copy the API key to the clipboard.
-      $('#copy-api-key-button').tooltip().click(function () {
-        var button = $(this);
-        navigator.clipboard.writeText($('#api-key').val()).then(function () {
-          var button_icon = $('#copy-button-icon');
-          var icon_original_class = button_icon.data('icon-original-class');
-          var icon_clicked_class = button_icon.data('icon-clicked-class');
-
-          // Update the button icon.
-          button_icon.removeClass(icon_original_class).addClass(icon_clicked_class).css('color', 'green');
-
-          // Update the button tooltip.
-          button.tooltip('option', 'content', button.data('clicked-label')).tooltip('open');
-
-          // Reset the button after 2 seconds.
-          setTimeout(function () {
-            button_icon.removeClass(icon_clicked_class).addClass(icon_original_class).css('color', '');
-            button.tooltip('option', 'content', button.data('original-label')).tooltip('close');
-          }, 2000);
-        }).catch(function (err) {
-          console.error('Failed to copy API key to clipboard: ', err);
-        });
-      });
-});

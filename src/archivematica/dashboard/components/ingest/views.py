@@ -17,7 +17,6 @@
 import json
 import logging
 import os
-import re
 import shutil
 import uuid
 from urllib.parse import urljoin
@@ -57,23 +56,22 @@ logger = logging.getLogger("archivematica.dashboard")
 
 def ingest_grid(request):
     try:
-        storage_service.get_location(purpose="BL")
+        storage_service.get_location(purpose="TS")
     except Exception:
         messages.warning(
             request,
             _(
-                "Error retrieving originals directory locations: is the storage server running? Please contact an administrator."
+                "Error retrieving source directory locations: "
+                "is the storage server running? "
+                "Please contact an administrator."
             ),
         )
-    return render(
-        request,
-        "ingest/grid.html",
-        {
-            "polling_interval": django_settings.POLLING_INTERVAL,
-            "microservices_help": django_settings.MICROSERVICES_HELP,
-            "job_statuses": dict(models.Job.STATUS),
-        },
-    )
+    config = {
+        "polling_interval": django_settings.POLLING_INTERVAL,
+        "microservices_help": django_settings.MICROSERVICES_HELP,
+        "job_statuses": dict(models.Job.STATUS),
+    }
+    return render(request, "ingest/monitor.html", {"config": config})
 
 
 class SipsView(View):
@@ -151,6 +149,7 @@ def ingest_metadata_edit(request, uuid, id=None):
 
 
 def ingest_metadata_add_files(request, sip_uuid):
+    source_directories = []
     try:
         source_directories = storage_service.get_location(purpose="TS")
     except Exception:
@@ -173,7 +172,26 @@ def ingest_metadata_add_files(request, sip_uuid):
     jobs = models.Job.objects.filter(sipuuid=sip_uuid)
     name = jobs.get_directory_name()
 
-    return render(request, "ingest/metadata_add_files.html", locals())
+    editor_payload = None
+    if source_directories:
+        dirs = {}
+        for directory in source_directories:
+            dir_uuid = directory.get("uuid")
+            dir_path = directory.get("path")
+            if dir_uuid and dir_path:
+                dirs[dir_uuid] = dir_path
+        if dirs:
+            editor_payload = {
+                "sipUUID": sip_uuid,
+                "sourceDirectories": dirs,
+            }
+
+    context = {
+        "name": name,
+        "sip_uuid": sip_uuid,
+        "editor_payload": editor_payload,
+    }
+    return render(request, "ingest/metadata_add_files.html", context)
 
 
 def aic_metadata_add(request, uuid):
@@ -405,31 +423,3 @@ def ingest_browse(request, browse_type, jobuuid):
     name = jobs.get_directory_name()
 
     return render(request, "ingest/aip_browse.html", locals())
-
-
-_REGEX_BAGIT_MANIFESTS = re.compile(
-    r"""^(
-           (tag)?manifest-\w+ |
-           bag(it|-info)
-         )\.txt$
-    """,
-    re.VERBOSE,
-)
-
-
-def transfer_file_download(request, uuid):
-    # get file basename
-    try:
-        file = models.File.objects.get(uuid=uuid)
-    except Exception:
-        raise Http404
-
-    shared_directory_path = django_settings.SHARED_DIRECTORY
-    transfer = models.Transfer.objects.get(uuid=file.transfer.uuid)
-    path_to_transfer = transfer.currentlocation.replace(
-        "%sharedPath%", shared_directory_path
-    )
-    path_to_file = file.currentlocation.decode().replace(
-        "%transferDirectory%", path_to_transfer
-    )
-    return helpers.send_file(request, path_to_file)

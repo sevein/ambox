@@ -20,9 +20,9 @@ along with Archivematica.  If not, see <http://www.gnu.org/licenses/>.
 function selectField(el) {
   var target = $(el.parentNode.nextSibling.firstChild);
   if (el.value == 'transferMetadataOther') {
-    target.show('fade', {}, 250);
+    target.show();
   } else {
-    target.hide('fade', {}, 250);
+    target.hide();
   }
 }
 
@@ -101,7 +101,7 @@ function renderArchivalStorageSearchForm(search_uri, on_success, on_error) {
 
   if (on_success !== null) {
     function aipSearchSubmit() {
-      // Query Django, which queries ElasticSearch, to get the backlog file info
+      // Query Django (backed by Elasticsearch) for archival storage results.
       var query_url = search_uri + '?' + search.toUrlParams();
       if($('#id_show_files').is(':checked')) {
         query_url += '&filemode=true';
@@ -142,7 +142,8 @@ $(document).ready(function() {
   var search = renderArchivalStorageSearchForm(null, null, null);
 
   function render_thumbnail(file_uuid) {
-    return '<img src="/archival-storage/thumbnail/' + file_uuid + '/">';
+    var url = '/archival-storage/thumbnail/' + file_uuid + '/';
+    return '<img class="aip-thumbnail-img" src="' + url + '" onerror="handle_thumbnail_error(this)">';
   }
 
   function render_filepath(filepath, type, row_data) {
@@ -177,6 +178,11 @@ $(document).ready(function() {
       + text_span
       + '</a>';
   }
+
+  window.handle_thumbnail_error = function(img) {
+    $(img).closest('td').text(gettext('N/A'));
+  };
+
 
   function render_aip_name(name, type, row_data) {
     return '<a href="/archival-storage/' + row_data.uuid + '/">' + name + '</a>';

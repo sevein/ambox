@@ -28,6 +28,7 @@ from archivematica.archivematicaCommon.gearman_encoder import JSONDataEncoder
 from archivematica.dashboard.main.models import SIP
 from archivematica.dashboard.main.models import Job
 from archivematica.dashboard.main.models import Transfer
+from archivematica.MCPServer.server.jobs.chain import get_job_class_for_link
 from archivematica.MCPServer.server.packages import create_package
 from archivematica.MCPServer.server.packages import get_approve_transfer_chain_id
 from archivematica.MCPServer.server.processing_config import get_processing_fields
@@ -352,12 +353,30 @@ class RPCServer(GearmanWorker):
         except KeyError as err:
             raise UnexpectedPayloadError(f"Missing parameter: {err}")
         model = model_attrs[0]
-        sql = """
-        SELECT SIPUUID,
-               MAX(UNIX_TIMESTAMP(createdTime) + createdTimeDec) AS timestamp
-            FROM Jobs
-            WHERE unitType=%s AND NOT SIPUUID LIKE '%%None%%'
-            GROUP BY SIPUUID;"""
+        if payload["type"] == "SIP":
+            sql = """
+            SELECT Jobs.SIPUUID,
+                   MAX(UNIX_TIMESTAMP(Jobs.createdTime)) AS timestamp
+                FROM Jobs
+                JOIN SIPs
+                    ON Jobs.SIPUUID = SIPs.sipUUID
+                WHERE
+                    Jobs.unitType=%s
+                    AND NOT Jobs.SIPUUID LIKE '%%None%%'
+                    AND NOT SIPs.hidden
+                GROUP BY Jobs.SIPUUID;"""
+        else:
+            sql = """
+            SELECT Jobs.SIPUUID,
+                   MAX(UNIX_TIMESTAMP(Jobs.createdTime)) AS timestamp
+                FROM Jobs
+                JOIN Transfers
+                    ON Jobs.SIPUUID = Transfers.transferUUID
+                WHERE
+                    Jobs.unitType=%s
+                    AND NOT Jobs.SIPUUID LIKE '%%None%%'
+                    AND NOT Transfers.hidden
+                GROUP BY Jobs.SIPUUID;"""
         with connection.cursor() as cursor:
             cursor.execute(sql, (model_attrs[1],))
             sipuuids_and_timestamps = cursor.fetchall()
@@ -365,8 +384,6 @@ class RPCServer(GearmanWorker):
         objects = []
         for unit_id, timestamp in sipuuids_and_timestamps:
             unit = model.objects.get(pk=unit_id)
-            if unit.hidden:
-                continue
             item = {
                 "id": unit_id,
                 "uuid": unit_id,
@@ -374,7 +391,9 @@ class RPCServer(GearmanWorker):
                 "active": unit.active,
                 "jobs": [],
             }
-            jobs = Job.objects.filter(sipuuid=unit_id).order_by("-createdtime")
+            jobs = Job.objects.filter(sipuuid=unit_id).order_by(
+                "-createdtime", "-jobuuid"
+            )
             if jobs:
                 item["directory"] = jobs[0].get_directory_name()
             # Embed "Access System ID" in status data (used in Upload DIP).
@@ -398,12 +417,17 @@ class RPCServer(GearmanWorker):
                 new_job["uuid"] = str(job_.jobuuid)
                 new_job["link_id"] = str(job_.microservicechainlink)
                 new_job["currentstep"] = job_.currentstep
-                new_job["timestamp"] = "%d.%s" % (
-                    calendar.timegm(job_.createdtime.timetuple()),
-                    str(job_.createdtimedec).split(".")[-1],
+                new_job["timestamp"] = (
+                    f"{calendar.timegm(job_.createdtime.timetuple())}.{job_.createdtime.microsecond:06d}"
                 )
                 new_job["microservicegroup"] = link.get_label("group", lang)
                 new_job["type"] = link.get_label("description", lang)
+                try:
+                    new_job["produces_tasks"] = get_job_class_for_link(
+                        link
+                    ).produces_tasks
+                except ValueError:
+                    new_job["produces_tasks"] = False
                 try:
                     new_job["choices"] = _pull_choices(
                         str(job_.jobuuid), lang, jobs_awaiting_for_approval
