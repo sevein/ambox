@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
-import type { ProcessingConfig } from '@/browser/types'
+import type { ProcessingConfig } from '@/transfer-browser/types'
 
 const props = withDefaults(defineProps<{
   configs: ProcessingConfig[]
@@ -179,6 +179,8 @@ onUnmounted(() => {
     :class="{ open: isOpen }"
     role="group"
     :aria-label="submissionOptionsLabel"
+    @click.stop
+    @keydown.stop
   >
     <button
       type="button"
@@ -205,6 +207,7 @@ onUnmounted(() => {
       <span class="caret" />
     </button>
     <ul
+      v-show="isOpen"
       ref="dropdownMenuRef"
       class="dropdown-menu dropdown-menu-right"
       role="menu"

@@ -9,6 +9,7 @@ volumes:
   mysql_data:
   elasticsearch_data:
   archivematica_storage_service_staging_data:
+  archivematica_dashboard_frontend_node_modules:
 
   # External named volumes.
   # These are intended to be accessible beyond the docker host (e.g. via NFS).
@@ -43,7 +44,7 @@ services:
       - "SYS_NICE"
 
   elasticsearch:
-    image: "docker.elastic.co/elasticsearch/elasticsearch:8.19.11"
+    image: "docker.elastic.co/elasticsearch/elasticsearch:8.19.12"
     environment:
       - "cluster.name=am-cluster"
       - "node.name=am-node"
@@ -198,6 +199,7 @@ services:
       ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSRF_COOKIE_SECURE: "false"
     volumes:
       - "../:/src"
+      - "archivematica_dashboard_frontend_node_modules:/src/src/archivematica/dashboard/vue/node_modules"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
     depends_on:
       elasticsearch:
