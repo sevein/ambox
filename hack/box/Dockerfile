@@ -279,6 +279,7 @@ RUN ARCH=$(uname -m) && \
     tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz && rm /tmp/s6-overlay-arch.tar.xz
 COPY hack/box/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY hack/box/envs/ /etc/ambox/envs/
+COPY hack/box/config/ambox.yaml /etc/ambox/config.yaml
 COPY --link \
 	hack/box/scripts/wait-file.sh \
 	hack/box/scripts/wait-http.sh \

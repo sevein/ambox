@@ -47,11 +47,12 @@ processing:
 ## Where the config is read from
 
 At container boot, ambox reads `/etc/ambox/config.yaml`. You can override the
-path with the `AMBOX_CONFIG_FILE` environment variable. If no config file is
-present, ambox proceeds without applying extra configuration (the schema
-defaults and Archivematica defaults apply). The repository ships with
-`hack/box/config/ambox.yaml` as a reference template; it is not loaded
-automatically.
+path with the `AMBOX_CONFIG_FILE` environment variable. The image bundles a
+default file at that path, sourced from `hack/box/config/ambox.yaml`.
+
+If you override `AMBOX_CONFIG_FILE` and the target file is missing, ambox
+proceeds without applying extra configuration (the schema defaults and
+Archivematica defaults apply).
 
 ## Schema versioning
 
