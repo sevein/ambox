@@ -14,11 +14,6 @@
 
 {% block app_content %}
 
-<div class="row">
-
-  {% include 'fpr/_sidebar.html' %}
-
-  <div class="col-xs-10">
 
     <div class='format'>
 
@@ -34,40 +29,14 @@
     </div>
 
     {% if group %}
-    <h2>{% trans "Formats" %}</h2>
+    <h3>{% trans "Formats" %}</h3>
 
-    <p><a href="{% url 'fpr:format_create' %}">{% trans "Create new format" %}</a></p>
-
-      {% if group_formats %}
-      <table class="datatable">
-        <thead>
-          <tr>
-            <th>{% trans "Description" %}</th>
-            <th>{% trans "Actions" %}</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for format in group_formats %}
-          <tr>
-            <td><a href="{% url 'fpr:format_detail' format.slug %}">{{ format.description }}</a></td>
-            <td><a href="{% url 'fpr:format_edit' format.slug %}">{% trans "Edit" %}</a> </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p>
-        {% blocktrans with description=group.description %}
-          No formats exist for {{ description }}.
-        {% endblocktrans %}
-      </p>
-      {% endif %}
+      <div
+        class="fpr-vue-table"
+        data-fpr-table-root
+        data-fpr-table-script-id="fpr-formatgroup-form-formats-payload"></div>
+      {{ fpr_table_payload|json_script:"fpr-formatgroup-form-formats-payload" }}
     {% endif %}
-
-  </div> <!-- /col-xs-10 -->
-
-
-</div> <!-- /row -->
 
 
 {% endblock app_content %}

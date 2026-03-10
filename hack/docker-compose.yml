@@ -10,6 +10,7 @@ volumes:
   elasticsearch_data:
   archivematica_storage_service_staging_data:
   archivematica_dashboard_frontend_node_modules:
+  archivematica_storage_service_frontend_node_modules:
 
   # External named volumes.
   # These are intended to be accessible beyond the docker host (e.g. via NFS).
@@ -81,7 +82,7 @@ services:
       - "127.0.0.1:62004:4730"
 
   clamavd:
-    image: "clamav/clamav-debian:1.5.1-29"
+    image: "clamav/clamav-debian:1.5.2-32"
     user: "clamav"
     entrypoint: "/init-unprivileged"
     environment:
@@ -199,7 +200,7 @@ services:
       ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSRF_COOKIE_SECURE: "false"
     volumes:
       - "../:/src"
-      - "archivematica_dashboard_frontend_node_modules:/src/src/archivematica/dashboard/vue/node_modules"
+      - "archivematica_dashboard_frontend_node_modules:/src/src/archivematica/dashboard/frontend/node_modules"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
     depends_on:
       elasticsearch:
@@ -233,6 +234,7 @@ services:
     volumes:
       - "./submodules/archivematica-storage-service/:/src/"
       - "./submodules/archivematica-sampledata/:/home/archivematica/archivematica-sampledata/:ro"
+      - "archivematica_storage_service_frontend_node_modules:/src/src/archivematica/storage_service/frontend/node_modules"
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:rw"
       - "archivematica_storage_service_staging_data:/var/archivematica/storage_service:rw"
       - "archivematica_storage_service_location_data:/home:rw"
