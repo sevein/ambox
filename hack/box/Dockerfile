@@ -121,15 +121,15 @@ RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=$
 	&& uv venv --python ${PYTHON_VERSION} /venv-ss \
 	&& uv pip install --python /venv-ss/bin/python -r /requirements-ss.txt
 
-# vue-builder provides the Vue.js frontend assets.
+# frontend-builder provides the dashboard frontend assets.
 #
 # -----------------------------------------------------------------------------
-FROM node:${NODE24_VERSION} AS vue-builder
-WORKDIR /src/src/archivematica/dashboard/vue
-COPY --link src/archivematica/dashboard/vue/package.json /src/src/archivematica/dashboard/vue/package.json
-COPY --link src/archivematica/dashboard/vue/package-lock.json /src/src/archivematica/dashboard/vue/package-lock.json
-RUN npm clean-install --ignore-scripts
-COPY --link src/archivematica/dashboard/vue /src/src/archivematica/dashboard/vue
+FROM node:${NODE24_VERSION} AS frontend-builder
+WORKDIR /src/src/archivematica/dashboard/frontend
+COPY --link src/archivematica/dashboard/frontend/package.json /src/src/archivematica/dashboard/frontend/package.json
+COPY --link src/archivematica/dashboard/frontend/package-lock.json /src/src/archivematica/dashboard/frontend/package-lock.json
+RUN npm clean-install
+COPY --link src/archivematica/dashboard/frontend /src/src/archivematica/dashboard/frontend
 COPY --link src/archivematica/dashboard/media/images /src/src/archivematica/dashboard/media/images
 RUN npm run build
 
@@ -327,7 +327,7 @@ RUN set -ex \
 	' \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
-COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/src/archivematica/dashboard/vue/dist
+COPY --from=frontend-builder --link /src/src/archivematica/dashboard/frontend/dist /src/src/archivematica/dashboard/frontend/dist
 
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src
@@ -349,7 +349,7 @@ RUN set -ex \
 	' \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
-COPY --from=vue-builder --link /src/src/archivematica/dashboard/vue/dist /src/src/archivematica/dashboard/vue/dist
+COPY --from=frontend-builder --link /src/src/archivematica/dashboard/frontend/dist /src/src/archivematica/dashboard/frontend/dist
 
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src
