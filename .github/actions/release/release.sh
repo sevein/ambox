@@ -141,6 +141,16 @@ else
 fi
 git fetch --no-tags upstream "${upstream_branch}"
 
+upstream_base_commit=""
+upstream_base_short=""
+upstream_commit_url=""
+if upstream_base_commit="$(git merge-base "$current_tag" "upstream/${upstream_branch}" 2>/dev/null)"; then
+  upstream_base_short="$(git rev-parse --short=8 "$upstream_base_commit")"
+  upstream_commit_url="https://github.com/${upstream_repo}/commit/${upstream_base_commit}"
+else
+  echo "Warning: unable to determine upstream base commit for $current_tag" >&2
+fi
+
 if [[ "$current_tag" == *-* ]]; then
   previous_tag="$(git describe --tags --abbrev=0 --match '[0-9]*' "${current_tag}^" 2>/dev/null || true)"
 else
@@ -175,6 +185,9 @@ else
   fi
 
   {
+    if [[ -n "$upstream_base_commit" ]]; then
+      printf 'Based on upstream commit [%s](%s).\n\n' "$upstream_base_short" "$upstream_commit_url"
+    fi
     printf '## Container images\n\n'
     printf 'Multi-architecture image available at:\n\n'
     printf -- '- `ghcr.io/sevein/ambox:%s`\n' "$current_tag"
