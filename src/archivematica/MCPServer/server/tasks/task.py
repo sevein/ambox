@@ -66,6 +66,34 @@ class Task:
         model_objects = [task.to_db_model(job) for task in tasks]
         models.Task.objects.bulk_create(model_objects)
 
+    @classmethod
+    @auto_close_old_connections()
+    def bulk_mark_failed(cls, tasks, message):
+        """Persist task failures that happen before MCPClient returns results."""
+        finished_timestamp = timezone.now()
+        task_uuids = [str(task.uuid) for task in tasks]
+        models.Task.objects.filter(taskuuid__in=task_uuids, exitcode=None).update(
+            exitcode=1,
+            stderror=message,
+            endtime=finished_timestamp,
+        )
+        for task in tasks:
+            task.exit_code = 1
+            task.stderr = message
+            task.finished_timestamp = finished_timestamp
+            task.done = True
+            task.write_output()
+
+    @classmethod
+    @auto_close_old_connections()
+    def mark_unfinished_for_job_failed(cls, job_uuid, message):
+        """Fail unfinished task rows after their MCPServer job stops."""
+        return models.Task.objects.filter(job_id=job_uuid, exitcode=None).update(
+            exitcode=1,
+            stderror=message,
+            endtime=timezone.now(),
+        )
+
     def to_db_model(self, job):
         """Returns an instance of the `Task` Django model."""
         job_uuid = job.uuid

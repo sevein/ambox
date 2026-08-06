@@ -10,6 +10,7 @@ from django.urls import reverse
 from archivematica.archivematicaCommon.archivematicaFunctions import b64encode_string
 from archivematica.archivematicaCommon.version import get_full_version
 from archivematica.dashboard.components.api import validators
+from archivematica.dashboard.contrib.mcp.client import RPCServerError
 
 TEST_USER_FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "test_user.json"
 
@@ -28,6 +29,8 @@ class MCPClientMock:
         metadata_set_id,
         auto_approve=True,
         wait_until_complete=False,
+        processing_config=None,
+        idempotency_key=None,
     ):
         if self.fails:
             raise Exception("Something bad happened!")
@@ -85,11 +88,11 @@ class TestAPIv2(TestCase):
         )
         assert resp.status_code == 400
 
-    @mock.patch(
-        "archivematica.dashboard.components.api.views.MCPClient",
-        return_value=MCPClientMock(),
-    )
-    def test_package_create_mcpclient_ok(self, patcher):
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_mcpclient_ok(self, mcp_client_cls):
+        mcp_client = mcp_client_cls.return_value
+        mcp_client.create_package.return_value = "59402c61-3aba-4af7-966a-996073c0601d"
+
         resp = self.client.post(
             "/api/v2beta/package/",
             json.dumps({"path": self.path}),
@@ -99,6 +102,140 @@ class TestAPIv2(TestCase):
         assert resp.content.decode() == json.dumps(
             {"id": "59402c61-3aba-4af7-966a-996073c0601d"}
         )
+        mcp_client.create_package.assert_called_once_with(
+            None,
+            None,
+            None,
+            None,
+            "671643e1-5bec-4a5f-b244-abb76fedb0c4:foo/bar.jpg",
+            None,
+            auto_approve=True,
+            wait_until_complete=False,
+        )
+
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_preserves_auto_approve_false(self, mcp_client_cls):
+        mcp_client = mcp_client_cls.return_value
+        mcp_client.create_package.return_value = "59402c61-3aba-4af7-966a-996073c0601d"
+
+        resp = self.client.post(
+            "/api/v2beta/package/",
+            json.dumps({"path": self.path, "auto_approve": False}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 202
+        mcp_client.create_package.assert_called_once_with(
+            None,
+            None,
+            None,
+            None,
+            "671643e1-5bec-4a5f-b244-abb76fedb0c4:foo/bar.jpg",
+            None,
+            auto_approve=False,
+            wait_until_complete=False,
+        )
+
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_forwards_idempotency_key(self, mcp_client_cls):
+        mcp_client = mcp_client_cls.return_value
+        transfer_uuid = "59402c61-3aba-4af7-966a-996073c0601d"
+        mcp_client.create_package.return_value = transfer_uuid
+
+        resp = self.client.post(
+            "/api/v2beta/package/",
+            json.dumps({"path": self.path}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "transfer-submission-123"},
+        )
+
+        assert resp.status_code == 202
+        assert json.loads(resp.content) == {"id": transfer_uuid}
+        mcp_client.create_package.assert_called_once_with(
+            None,
+            None,
+            None,
+            None,
+            "671643e1-5bec-4a5f-b244-abb76fedb0c4:foo/bar.jpg",
+            None,
+            auto_approve=True,
+            wait_until_complete=False,
+            idempotency_key="transfer-submission-123",
+        )
+
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_rejects_invalid_idempotency_key(self, mcp_client_cls):
+        for idempotency_key in (
+            "",
+            "contains whitespace",
+            "a" * 256,
+            "contains\x00control",
+        ):
+            with self.subTest(idempotency_key=idempotency_key):
+                resp = self.client.post(
+                    "/api/v2beta/package/",
+                    json.dumps({"path": self.path}),
+                    content_type="application/json",
+                    headers={"Idempotency-Key": idempotency_key},
+                )
+
+                assert resp.status_code == 400
+                assert json.loads(resp.content) == {
+                    "error": True,
+                    "message": (
+                        "Idempotency-Key must contain 1-255 visible ASCII "
+                        "characters without whitespace."
+                    ),
+                }
+        mcp_client_cls.assert_not_called()
+
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_returns_conflict_for_reused_idempotency_key(
+        self, mcp_client_cls
+    ):
+        message = "Idempotency key has already been used with a different request."
+        mcp_client_cls.return_value.create_package.side_effect = RPCServerError(
+            {
+                "error": True,
+                "message": message,
+                "status_code": 422,
+                "code": "idempotency_key_reused",
+            }
+        )
+
+        resp = self.client.post(
+            "/api/v2beta/package/",
+            json.dumps({"path": self.path}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "transfer-submission-123"},
+        )
+
+        assert resp.status_code == 422
+        assert json.loads(resp.content) == {"error": True, "message": message}
+
+    @mock.patch("archivematica.dashboard.components.api.views.MCPClient")
+    def test_package_create_returns_conflict_while_request_is_in_progress(
+        self, mcp_client_cls
+    ):
+        message = "A request with this idempotency key is still in progress."
+        mcp_client_cls.return_value.create_package.side_effect = RPCServerError(
+            {
+                "error": True,
+                "message": message,
+                "status_code": 409,
+                "code": "idempotency_key_in_progress",
+            }
+        )
+
+        resp = self.client.post(
+            "/api/v2beta/package/",
+            json.dumps({"path": self.path}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "transfer-submission-123"},
+        )
+
+        assert resp.status_code == 409
+        assert json.loads(resp.content) == {"error": True, "message": message}
 
     @mock.patch(
         "archivematica.dashboard.components.api.views.MCPClient",

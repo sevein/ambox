@@ -6,10 +6,12 @@ from archivematica.MCPClient.client.pool import WorkerPool
 
 def test_stop_skips_join_on_current_thread() -> None:
     pool = WorkerPool.__new__(WorkerPool)
+    pool._parent_pid = os.getpid()
     pool.shutdown_event = threading.Event()
     pool.pool_maintainance_thread = threading.current_thread()
     pool.workers = []
     pool.logging_listener = None
+    pool.metrics_listener = None
 
     pool.stop()
 

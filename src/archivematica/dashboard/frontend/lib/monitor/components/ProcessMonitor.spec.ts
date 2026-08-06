@@ -33,6 +33,7 @@ vi.mock('@/shared/http', async () => {
 import { getTransferStatuses } from '@/shared/http/transfer'
 import { getIngestStatuses } from '@/shared/http/ingest'
 import { executeChoice, getIngestUploadAsUrl, getUploadTarget, setUploadTarget } from '@/shared/http'
+import { PROCESSING_UNIT_STATE } from '@/shared/http/processing'
 import type { MonitorConfig } from '@/monitor/composables'
 
 const i18n = createI18nMock()
@@ -69,6 +70,40 @@ describe('ProcessMonitor', () => {
     expect(getTransferStatuses).toHaveBeenCalledTimes(1)
     expect(getIngestStatuses).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Transfer-1')
+  })
+
+  it('shows a waiting icon for jobless transfers waiting to start', async () => {
+    vi.mocked(getTransferStatuses).mockResolvedValueOnce({
+      objects: [{
+        uuid: 't-queued',
+        directory: 'Transfer-queued',
+        timestamp: 0,
+        processing_state: PROCESSING_UNIT_STATE.waitingForProcessing,
+        jobs: [],
+      }],
+      mcp: true,
+    })
+    vi.mocked(getIngestStatuses).mockResolvedValueOnce({ objects: [], mcp: true })
+
+    const wrapper = mount(ProcessMonitor, {
+      props: { unitType: 'Transfer', config: defaultConfig },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.find('.sip-detail-icon-status .monitor-status-icon-hourglass').exists(),
+    ).toBe(true)
+    expect(
+      wrapper.find('.sip-detail-icon-status .monitor-status-icon-accept').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('.sip-detail-icon-status .monitor-status-icon-arrow-refresh').exists(),
+    ).toBe(false)
   })
 
   it('fetches ingest statuses when unitType is SIP', async () => {
@@ -284,6 +319,51 @@ describe('ProcessMonitor', () => {
     const job = wrapper.find('.job')
     expect(job.exists()).toBe(true)
     expect(job.classes()).toContain('job-status-executing')
+    wrapper.unmount()
+  })
+
+  it('keeps completed failed-transfer report jobs styled as successful', async () => {
+    const config: MonitorConfig = {
+      ...defaultConfig,
+      job_statuses: {
+        2: 'Completed successfully',
+      },
+    }
+
+    vi.mocked(getTransferStatuses).mockResolvedValueOnce({
+      objects: [{
+        uuid: 't-1',
+        directory: 'test-virus',
+        timestamp: 1,
+        jobs: [{
+          uuid: 'j-email-fail-report',
+          type: 'Email fail report',
+          microservicegroup: 'Failed transfer',
+          currentstep: 2,
+          timestamp: 1,
+          produces_tasks: true,
+        }],
+      }],
+      mcp: true,
+    })
+
+    const wrapper = mount(ProcessMonitor, {
+      props: { unitType: 'Transfer', config },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+    await wrapper.find('.microservice-group').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const job = wrapper.find('.job')
+    expect(job.exists()).toBe(true)
+    expect(job.text()).toContain('Email fail report')
+    expect(job.text()).toContain('Completed successfully')
+    expect(job.classes()).toContain('job-status-success')
+    expect(job.classes()).not.toContain('job-status-failed')
     wrapper.unmount()
   })
 

@@ -173,6 +173,11 @@ The bundled `hack/box/Makefile` mounts `test/ambox.yaml` and the SFTP test
 keys under `test/` to simplify local development. Adjust those mounts if you
 want different config or key paths.
 
+Run `./verify.sh` to build the image and verify the Dashboard login page. Set
+`AMBOX_SKIP_BUILD=1` to verify an existing `IMAGE:TAG`. Pull requests run this
+smoke test in CI. Releases test the amd64 candidate digest before publishing
+the version and `latest` manifests.
+
 To create a new release, update the version number and run the release workflow
 command below (example uses v1.0.1):
 

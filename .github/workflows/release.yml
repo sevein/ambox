@@ -71,92 +71,69 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: "Docker meta for Docker Hub"
-        id: meta-dockerhub
+      - name: "Docker meta"
+        id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.DOCKERHUB_IMAGE }}
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
           tags: |
             type=raw,value=${{ github.event.inputs.version }}
-      - name: "Build and push to Docker Hub by digest"
-        id: build-dockerhub
+      - name: "Build and push by digest"
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta-dockerhub.outputs.labels }}
+          labels: ${{ steps.meta.outputs.labels }}
           file: ./hack/box/Dockerfile
           provenance: false
           sbom: false
           build-args: |
             AM_SEED_CACHE_IMAGE=ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${{ env.AM_SEED_KEY }}
             AM_SEED_KEY=${{ env.AM_SEED_KEY }}
-          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-      - name: "Export Docker Hub digest"
+          outputs: type=image,"name=${{ env.DOCKERHUB_IMAGE }},${{ env.GHCR_IMAGE }}",push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=ambox-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=ambox-${{ env.PLATFORM_PAIR }}
+      - name: "Export image digest"
         run: |
-          mkdir -p "${{ runner.temp }}/digests-dockerhub"
-          digest="${{ steps.build-dockerhub.outputs.digest }}"
-          touch "${{ runner.temp }}/digests-dockerhub/${digest#sha256:}"
-      - name: "Upload Docker Hub digest"
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+      - name: "Upload image digest"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
-          name: digests-dockerhub-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests-dockerhub/*
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
-      - name: "Docker meta for GHCR"
-        id: meta-ghcr
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=${{ github.event.inputs.version }}
-      - name: "Build and push to GHCR by digest"
-        id: build-ghcr
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta-ghcr.outputs.labels }}
-          file: ./hack/box/Dockerfile
-          provenance: false
-          sbom: false
-          build-args: |
-            AM_SEED_CACHE_IMAGE=ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${{ env.AM_SEED_KEY }}
-            AM_SEED_KEY=${{ env.AM_SEED_KEY }}
-          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-      - name: "Export GHCR digest"
-        run: |
-          mkdir -p "${{ runner.temp }}/digests-ghcr"
-          digest="${{ steps.build-ghcr.outputs.digest }}"
-          touch "${{ runner.temp }}/digests-ghcr/${digest#sha256:}"
-      - name: "Upload GHCR digest"
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
-        with:
-          name: digests-ghcr-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests-ghcr/*
-          if-no-files-found: error
-          retention-days: 1
+
+  image-test:
+    name: "Test Docker image"
+    needs: [image-build]
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    uses: ./.github/workflows/test.yml
+    with:
+      image: ghcr.io/${{ github.repository_owner }}/ambox
+      digest-artifact: digests-linux-amd64
 
   image-merge:
     name: "Publish Docker manifests"
     runs-on: ubuntu-24.04
-    needs: [image-build]
+    needs: [image-test]
     permissions:
       contents: read
       packages: write
     steps:
-      - name: "Download Docker Hub digests"
+      - name: "Download image digests"
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: ${{ runner.temp }}/digests-dockerhub
-          pattern: digests-dockerhub-*
-          merge-multiple: true
-      - name: "Download GHCR digests"
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: ${{ runner.temp }}/digests-ghcr
-          pattern: digests-ghcr-*
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
           merge-multiple: true
       - name: "Log in to Docker Hub"
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
@@ -172,14 +149,14 @@ jobs:
       - name: "Set up buildx"
         uses: "docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c" # v4.2.0
       - name: "Create manifest list and push to Docker Hub"
-        working-directory: ${{ runner.temp }}/digests-dockerhub
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create \
             -t ${{ env.DOCKERHUB_IMAGE }}:${{ github.event.inputs.version }} \
             -t ${{ env.DOCKERHUB_IMAGE }}:latest \
             $(printf '${{ env.DOCKERHUB_IMAGE }}@sha256:%s ' *)
       - name: "Create manifest list and push to GHCR"
-        working-directory: ${{ runner.temp }}/digests-ghcr
+        working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create \
             -t ${{ env.GHCR_IMAGE }}:${{ github.event.inputs.version }} \

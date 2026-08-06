@@ -2,10 +2,11 @@
 
 import abc
 import collections
+import functools
 import json
 import logging
 import os
-from pathlib import Path
+from datetime import timedelta
 from tempfile import mkdtemp
 from uuid import UUID
 from uuid import uuid4
@@ -16,6 +17,19 @@ from django.utils import timezone
 
 import archivematica.archivematicaCommon.storageService as storage_service
 from archivematica.archivematicaCommon.dbconns import auto_close_old_connections
+from archivematica.archivematicaCommon.transfer_source_retrieval import (
+    TransferSourceRetrievalError,
+)
+from archivematica.archivematicaCommon.transfer_source_retrieval import (
+    copy_transfer_source_files,
+)
+from archivematica.archivematicaCommon.transfer_source_retrieval import (
+    move_to_internal_shared_dir,
+)
+from archivematica.archivematicaCommon.transfer_source_retrieval import (
+    plan_transfer_source_paths,
+)
+from archivematica.dashboard.main import idempotency
 from archivematica.dashboard.main import models
 from archivematica.MCPServer.server.jobs import JobChain
 from archivematica.MCPServer.server.processing_config import (
@@ -28,10 +42,24 @@ logger = logging.getLogger("archivematica.mcp.server.packages")
 
 StartingPoint = collections.namedtuple("StartingPoint", "watched_dir chain link")
 
+# API-created transfers enter this chain before their type-specific workflow.
+RETRIEVE_TRANSFER_SOURCE_CHAIN_ID = "2e12b4bd-06f1-4362-905f-ef9ce5f7cd5d"
+# The unit variable stores the type-specific link selected after retrieval.
+LINK_AFTER_TRANSFER_SOURCE_RETRIEVAL = "linkAfterTransferSourceRetrieval"
+PACKAGE_CREATE_OPERATION = "package.create"
+
 
 def _get_setting(name):
     """Retrieve a Django setting decoded as a unicode string."""
     return getattr(settings, name)
+
+
+def _shared_path_location(path):
+    """Return a shared-directory path in the database location form."""
+    shared_directory = _get_setting("SHARED_DIRECTORY")
+    if not shared_directory.endswith(os.sep):
+        shared_directory = f"{shared_directory}{os.sep}"
+    return path.replace(shared_directory, r"%sharedPath%", 1)
 
 
 # Each package type has its corresponding watched directory and its
@@ -125,66 +153,6 @@ def get_approve_transfer_chain_id(transfer_type):
     return item.chain
 
 
-def _file_is_an_archive(filepath):
-    filepath = filepath.lower()
-    return (
-        filepath.endswith(".zip")
-        or filepath.endswith(".tgz")
-        or filepath.endswith(".tar.gz")
-    )
-
-
-def _pad_destination_filepath_if_it_already_exists(filepath, original=None, attempt=0):
-    """
-    Return a version of the filepath that does not yet exist, padding with numbers
-    as necessary and reattempting until a non-existent filepath is found
-
-    :param filepath: `Path` or string of the desired destination filepath
-    :param original: `Path` or string of the original filepath (before padding attempts)
-    :param attempt: Number
-
-    :returns: `Path` object, padded as necessary
-    """
-    if original is None:
-        original = filepath
-    filepath = Path(filepath)
-    original = Path(original)
-
-    attempt = attempt + 1
-    if not filepath.exists():
-        return filepath
-    if filepath.is_dir():
-        return _pad_destination_filepath_if_it_already_exists(
-            f"{original.as_posix()}_{attempt}",
-            original,
-            attempt,
-        )
-
-    # need to work out basename
-    basedirectory = original.parent
-    basename = original.name
-
-    # do more complex padding to preserve file extension
-    period_position = basename.index(".")
-    non_extension = basename[0:period_position]
-    extension = basename[period_position:]
-    new_basename = f"{non_extension}_{attempt}{extension}"
-    new_filepath = basedirectory / new_basename
-    return _pad_destination_filepath_if_it_already_exists(
-        new_filepath, original, attempt
-    )
-
-
-def _check_filepath_exists(filepath):
-    if filepath == "":
-        return "No filepath provided."
-    if not os.path.exists(filepath):
-        return f"Filepath {filepath} does not exist."
-    if ".." in filepath:  # check for trickery
-        return "Illegal path."
-    return None
-
-
 _default_location_uuid = None
 
 
@@ -209,55 +177,15 @@ def _copy_from_transfer_sources(paths, relative_destination):
     :param str relative_destination: Path relative to the currently processing
                                      space to move the files to.
     """
-    processing_location = storage_service.get_first_location(purpose="CP")
-    transfer_sources = storage_service.get_location(purpose="TS")
-    files = {ts["uuid"]: {"location": ts, "files": []} for ts in transfer_sources}
-
-    for item in paths:
-        location, path = LocationPath(item).parts()
-        if location is None:
-            location = _default_transfer_source_location_uuid()
-        if location not in files:
-            raise Exception(
-                "Location %(location)s is not associated"
-                " with this pipeline" % {"location": location}
-            )
-
-        # ``path`` will be a UTF-8 bytestring but the replacement pattern path
-        # from ``files`` will be a Unicode object. Therefore, the latter must
-        # be UTF-8 encoded prior. Same reasoning applies to ``destination``
-        # below. This allows transfers to be started on UTF-8-encoded directory
-        # names.
-        source = path.replace(str(files[location]["location"]["path"]), "", 1).lstrip(
-            "/"
-        )
-        # Use the last segment of the path for the destination - basename for a
-        # file, or the last folder if not. Keep the trailing / for folders.
-        last_segment = (
-            os.path.basename(source.rstrip("/")) + "/"
-            if source.endswith("/")
-            else os.path.basename(source)
-        )
-        destination = os.path.join(
-            str(processing_location["path"]),
+    try:
+        copy_transfer_source_files(
+            paths,
             relative_destination,
-            last_segment,
-        ).replace("%sharedPath%", "")
-        files[location]["files"].append({"source": source, "destination": destination})
-        logger.debug("source: %s, destination: %s", source, destination)
-
-    message = []
-    for item in files.values():
-        reply, error = storage_service.copy_files(
-            item["location"], processing_location, item["files"]
+            storage_service,
+            default_location_uuid_factory=_default_transfer_source_location_uuid,
         )
-        if reply is None:
-            message.append(str(error))
-    if message:
-        raise Exception(
-            "The following errors occurred: %(message)s"
-            % {"message": ", ".join(message)}
-        )
+    except TransferSourceRetrievalError as err:
+        raise Exception(str(err))
 
 
 @auto_close_old_connections()
@@ -270,26 +198,70 @@ def _move_to_internal_shared_dir(filepath, dest, transfer):
     _start_package_transfer), this also matters because Transfer is going
     to look up the object in the database based on the location.
     """
-    error = _check_filepath_exists(filepath)
-    if error:
-        raise Exception(error)
-
-    filepath = Path(filepath)
-    dest = Path(dest)
-
-    # Confine destination to subdir of originals.
-    basename = filepath.name
-    dest = _pad_destination_filepath_if_it_already_exists(dest / basename)
-
     try:
-        filepath.rename(dest)
-    except OSError as e:
-        raise Exception("Error moving from %s to %s (%s)", filepath, dest, e)
-    else:
-        transfer.currentlocation = dest.as_posix().replace(
-            _get_setting("SHARED_DIRECTORY"), r"%sharedPath%", 1
+        result = move_to_internal_shared_dir(
+            filepath, dest, _get_setting("SHARED_DIRECTORY")
         )
-        transfer.save()
+    except TransferSourceRetrievalError as err:
+        raise Exception(str(err))
+    transfer.currentlocation = result.current_location
+    transfer.save()
+
+
+def _mark_transfer_failed(transfer: models.Transfer) -> None:
+    """Record a terminal bootstrap failure before a workflow job may exist."""
+    models.Transfer.objects.filter(pk=transfer.pk).update(
+        status=models.PACKAGE_STATUS_FAILED,
+        completed_at=timezone.now(),
+    )
+
+
+def _submission_fingerprint(
+    *,
+    name,
+    type_,
+    accession,
+    access_system_id,
+    path,
+    metadata_set_id,
+    auto_approve,
+    processing_config,
+):
+    """Return a stable digest of the inputs that define a submission."""
+    return idempotency.fingerprint(
+        {
+            "access_system_id": access_system_id,
+            "accession": accession,
+            "auto_approve": auto_approve,
+            "metadata_set_id": metadata_set_id,
+            "name": name,
+            "path": path,
+            "processing_config": processing_config,
+            "type": type_,
+        }
+    )
+
+
+def _create_transfer(
+    *,
+    accession,
+    access_system_id,
+    metadata_set,
+    processing_config,
+    user_id,
+):
+    kwargs = {"uuid": str(uuid4())}
+    if accession is not None:
+        kwargs["accessionid"] = accession
+    if access_system_id is not None:
+        kwargs["access_system_id"] = access_system_id
+    if metadata_set is not None:
+        kwargs["transfermetadatasetrow"] = metadata_set
+    transfer = models.Transfer.objects.create(**kwargs)
+    transfer.set_processing_configuration(processing_config)
+    transfer.update_active_agent(user_id)
+    logger.debug("Transfer object created: %s", transfer.pk)
+    return transfer
 
 
 @auto_close_old_connections()
@@ -306,12 +278,14 @@ def create_package(
     workflow,
     auto_approve=True,
     processing_config=None,
+    idempotency_key=None,
 ):
-    """Launch transfer and return its object immediately.
+    """Launch a transfer and return its accepted identity immediately.
 
     ``auto_approve`` changes significantly the way that the transfer is
     initiated. See ``_start_package_transfer_with_auto_approval`` and
-    ``_start_package_transfer`` for more details.
+    ``_start_package_transfer`` for more details. Unkeyed calls retain the
+    historical ``Transfer`` return value; keyed calls return a stable UUID.
     """
     if not name:
         raise ValueError("No transfer name provided.")
@@ -324,89 +298,176 @@ def create_package(
     if isinstance(auto_approve, bool) is False:
         raise ValueError("Unexpected value in auto_approve parameter")
     try:
-        int(user_id)
+        user_id = int(user_id)
     except (TypeError, ValueError):
         raise ValueError("Unexpected value in user_id parameter")
+    if idempotency_key is not None and not idempotency.is_valid_key(idempotency_key):
+        raise ValueError("Unexpected value in idempotency_key parameter")
 
-    # Create Transfer object.
-    kwargs = {"uuid": str(uuid4())}
-    if accession is not None:
-        kwargs["accessionid"] = accession
-    if access_system_id is not None:
-        kwargs["access_system_id"] = access_system_id
+    submission_fingerprint = None
+    if idempotency_key is not None:
+        submission_fingerprint = _submission_fingerprint(
+            name=name,
+            type_=type_,
+            accession=accession,
+            access_system_id=access_system_id,
+            path=path,
+            metadata_set_id=(
+                str(metadata_set_id) if metadata_set_id is not None else None
+            ),
+            auto_approve=auto_approve,
+            processing_config=processing_config,
+        )
+
+    metadata_set = None
     if metadata_set_id is not None:
         try:
-            kwargs["transfermetadatasetrow"] = models.TransferMetadataSet.objects.get(
-                id=metadata_set_id
-            )
+            metadata_set = models.TransferMetadataSet.objects.get(id=metadata_set_id)
         except (models.TransferMetadataSet.DoesNotExist, ValidationError):
             pass
-    transfer = models.Transfer.objects.create(**kwargs)
     if not processing_configuration_file_exists(processing_config):
         processing_config = "default"
-    transfer.set_processing_configuration(processing_config)
-    transfer.update_active_agent(user_id)
-    logger.debug("Transfer object created: %s", transfer.pk)
 
-    # TODO: use tempfile.TemporaryDirectory as a context manager in Py3.
-    tmpdir = mkdtemp(dir=os.path.join(_get_setting("SHARED_DIRECTORY"), "tmp"))
-    starting_point = PACKAGE_TYPE_STARTING_POINTS.get(type_)
-    logger.debug(
-        "Package %s: starting transfer (%s)", transfer.pk, (name, type_, path, tmpdir)
-    )
-    params = (transfer, name, path, tmpdir, starting_point)
-    if auto_approve:
-        params = params + (workflow, package_queue)
-        result = executor.submit(_start_package_transfer_with_auto_approval, *params)
+    transfer_kwargs = {
+        "accession": accession,
+        "access_system_id": access_system_id,
+        "metadata_set": metadata_set,
+        "processing_config": processing_config,
+        "user_id": user_id,
+    }
+    reservation = None
+    if idempotency_key is None:
+        transfer = _create_transfer(**transfer_kwargs)
+        transfer_uuid = str(transfer.pk)
     else:
-        result = executor.submit(_start_package_transfer, *params)
+        reservation = idempotency.reserve_or_replay(
+            user_id=user_id,
+            operation=PACKAGE_CREATE_OPERATION,
+            key=idempotency_key,
+            request_fingerprint=submission_fingerprint,
+            retention=timedelta(days=_get_setting("IDEMPOTENCY_KEY_RETENTION_DAYS")),
+            create_result=lambda: {
+                "id": str(_create_transfer(**transfer_kwargs).pk),
+            },
+        )
+        transfer_uuid = reservation.result["id"]
+        if not reservation.created:
+            logger.info("Replaying transfer submission %s", transfer_uuid)
+            return transfer_uuid
+        transfer = models.Transfer.objects.get(pk=transfer_uuid)
+
+    # TODO: Clean up this staging directory after successful transfer-source
+    # retrieval. TemporaryDirectory cannot own it because retrieval is asynchronous.
+    tmpdir = None
+    try:
+        tmpdir = mkdtemp(dir=os.path.join(_get_setting("SHARED_DIRECTORY"), "tmp"))
+        starting_point = PACKAGE_TYPE_STARTING_POINTS.get(type_)
+        logger.debug(
+            "Package %s: starting transfer (%s)",
+            transfer.pk,
+            (name, type_, path, tmpdir),
+        )
+        params = (transfer, name, path, tmpdir, starting_point)
+        if auto_approve:
+            transfer.status = models.PACKAGE_STATUS_PROCESSING
+            transfer.save(update_fields=["status"])
+            params = params + (workflow, package_queue)
+            result = executor.submit(
+                _start_package_transfer_with_auto_approval, *params
+            )
+        else:
+            result = executor.submit(_start_package_transfer, *params)
+    except Exception:
+        if auto_approve or idempotency_key is not None:
+            if reservation is None:
+                _mark_transfer_failed(transfer)
+            else:
+                try:
+                    _mark_transfer_failed(transfer)
+                except Exception:
+                    logger.exception(
+                        "Unable to mark transfer %s failed after handoff failure",
+                        transfer_uuid,
+                    )
+        if tmpdir is not None:
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                logger.warning(
+                    "Unable to remove unused transfer staging directory %s",
+                    tmpdir,
+                    exc_info=True,
+                )
+        if reservation is not None:
+            try:
+                idempotency.release(reservation)
+            except Exception:
+                logger.exception(
+                    "Unable to release the pending idempotency reservation "
+                    "for transfer %s",
+                    transfer_uuid,
+                )
+            logger.exception(
+                "Transfer %s could not be handed off",
+                transfer_uuid,
+            )
+        raise
 
     result.add_done_callback(lambda f: os.chmod(tmpdir, 0o770))
 
-    return transfer
+    if reservation is None:
+        return transfer
+    idempotency.complete(reservation)
+    return transfer_uuid
 
 
-def _capture_transfer_failure(fn):
-    """Silence errors during transfer/ingest."""
+def _capture_transfer_failure(fn=None, *, mark_transfer_failed=False):
+    """Guard transfer-start worker connections and capture their failures."""
 
-    def wrap(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as err:
-            # The main purpose of this decorator is to update the Transfer with
-            # the new state (fail). If the Transfer does not exist we give up.
-            if isinstance(err, (models.Transfer.DoesNotExist, ValidationError)):
-                raise
-            else:
+    def decorator(wrapped):
+        @auto_close_old_connections()
+        @functools.wraps(wrapped)
+        def wrap(*args, **kwargs):
+            try:
+                return wrapped(*args, **kwargs)
+            except Exception as err:
+                if isinstance(err, (models.Transfer.DoesNotExist, ValidationError)):
+                    raise
+
                 logger.exception("Exception occurred during transfer processing")
+                if (
+                    mark_transfer_failed
+                    and args
+                    and isinstance(args[0], models.Transfer)
+                ):
+                    _mark_transfer_failed(args[0])
 
-    return wrap
+        return wrap
+
+    if fn is None:
+        return decorator
+    return decorator(fn)
 
 
-def _determine_transfer_paths(name, path, tmpdir):
-    if _file_is_an_archive(path):
-        transfer_dir = tmpdir
-        p = LocationPath(path).path
-        filepath = os.path.join(tmpdir, os.path.basename(p))
-    else:
-        path = os.path.join(path, ".")  # Copy contents of dir but not dir
-        transfer_dir = filepath = os.path.join(tmpdir, name)
-    return (
-        transfer_dir.replace(_get_setting("SHARED_DIRECTORY"), "", 1),
-        filepath,
-        path,
+def _determine_transfer_paths(
+    name: str, path: str, tmpdir: str
+) -> tuple[str, str, str]:
+    """Adapt the shared path plan to the legacy tuple used in this module."""
+    plan = plan_transfer_source_paths(
+        name, path, tmpdir, _get_setting("SHARED_DIRECTORY")
     )
+    return plan.copy_destination_relative, plan.copied_path, plan.copy_source
 
 
-@_capture_transfer_failure
+@_capture_transfer_failure(mark_transfer_failed=True)
 def _start_package_transfer_with_auto_approval(
     transfer, name, path, tmpdir, starting_point, workflow, package_queue
 ):
-    """Start a new transfer the new way.
+    """Queue retrieval before continuing at the accepted-transfer workflow.
 
-    This method does not rely on the activeTransfer watched directory. It
-    blocks until the process completes. It does not prompt the user to accept
-    the transfer because we go directly into the next chain link.
+    No transfer content exists yet. This bootstrap only persists the planned
+    staging path and queues the API-only retrieval chain; MCPClient performs
+    the Storage Service and filesystem work.
     """
     transfer_rel, filepath, path = _determine_transfer_paths(name, path, tmpdir)
     logger.debug(
@@ -418,25 +479,33 @@ def _start_package_transfer_with_auto_approval(
     )
 
     logger.debug(
-        "Package %s: copying chosen contents from transfer sources (from=%s, to=%s)",
+        "Package %s: scheduling transfer-source retrieval (from=%s, to=%s)",
         transfer.pk,
         path,
         transfer_rel,
     )
-    _copy_from_transfer_sources([path], transfer_rel)
-
-    logger.debug("Package %s: moving package to processing directory", transfer.pk)
-    _move_to_internal_shared_dir(
-        filepath, _get_setting("PROCESSING_DIRECTORY"), transfer
+    currentlocation = _shared_path_location(filepath)
+    transfer.currentlocation = currentlocation
+    transfer.save(update_fields=["currentlocation"])
+    unit = Transfer(filepath, transfer.pk)
+    unit.mark_as_processing()
+    unit.set_variable(
+        LINK_AFTER_TRANSFER_SOURCE_RETRIEVAL,
+        None,
+        starting_point.link,
     )
-
-    logger.debug("Package %s: starting workflow processing", transfer.pk)
-    unit = Transfer(path, transfer.pk)
     job_chain = JobChain(
         unit,
-        workflow.get_chain(starting_point.chain),
+        workflow.get_chain(RETRIEVE_TRANSFER_SOURCE_CHAIN_ID),
         workflow,
-        starting_link=workflow.get_link(starting_point.link),
+    )
+    job_chain.context.update(
+        {
+            r"%transferSourcePath%": path,
+            r"%transferSourceDestination%": transfer_rel,
+            r"%transferSourceCopiedPath%": filepath,
+            r"%sharedPath%": _get_setting("SHARED_DIRECTORY"),
+        }
     )
     package_queue.schedule_job(next(job_chain))
 
@@ -476,27 +545,6 @@ def _start_package_transfer(transfer, name, path, tmpdir, starting_point):
     _move_to_internal_shared_dir(filepath, starting_point.watched_dir, transfer)
 
 
-class LocationPath:
-    """Path wraps a path that is a pair of two values: UUID and path."""
-
-    uuid, path = None, None
-
-    def __init__(self, path, sep=":"):
-        self.sep = sep
-        parts = path.partition(self.sep)
-        if parts[1] != self.sep:
-            self.path = parts[0]
-        else:
-            self.uuid = parts[0]
-            self.path = parts[2]
-
-    def __repr__(self):
-        return f"{self.__class__} (uuid={self.uuid!r}, sep={self.sep!r}, path={self.path!r})"
-
-    def parts(self):
-        return self.uuid, self.path
-
-
 def get_file_replacement_mapping(file_obj, unit_directory):
     mapping = BASE_REPLACEMENTS.copy()
     dirname = os.path.dirname(file_obj.currentlocation.decode())
@@ -530,6 +578,9 @@ def get_file_replacement_mapping(file_obj, unit_directory):
 
 class Package(metaclass=abc.ABCMeta):
     """A `Package` can be a Transfer, a SIP, or a DIP."""
+
+    # Limit file rows held in memory while avoiding long-lived DB cursors.
+    FILE_QUERYSET_BATCH_SIZE = 1000
 
     def __init__(self, current_path, uuid):
         self._current_path = current_path.replace(
@@ -576,6 +627,10 @@ class Package(metaclass=abc.ABCMeta):
     def mark_as_done(self):
         """Change the status of the package to Done."""
         self.change_status(models.PACKAGE_STATUS_DONE, completed_at=timezone.now())
+
+    def mark_as_failed(self):
+        """Change the status of the package to Failed."""
+        self.change_status(models.PACKAGE_STATUS_FAILED, completed_at=timezone.now())
 
     def mark_as_processing(self):
         """Change the status of the package to Processing."""
@@ -641,6 +696,25 @@ class Package(metaclass=abc.ABCMeta):
 
         return mapping
 
+    def _database_file_replacement_mappings(self, queryset):
+        """Yield file mappings without holding a database cursor open."""
+        queryset = queryset.order_by("uuid")
+        last_uuid = None
+
+        while True:
+            with auto_close_old_connections():
+                page_queryset = queryset
+                if last_uuid is not None:
+                    page_queryset = page_queryset.filter(uuid__gt=last_uuid)
+                file_objs = list(page_queryset[: self.FILE_QUERYSET_BATCH_SIZE])
+
+            if not file_objs:
+                break
+
+            for file_obj in file_objs:
+                last_uuid = file_obj.uuid
+                yield get_file_replacement_mapping(file_obj, self.current_path)
+
     def files(self, filter_filename_end=None, filter_subdir=None):
         """Generator that yields all files associated with the package or that
         should be associated with a package.
@@ -660,30 +734,25 @@ class Package(metaclass=abc.ABCMeta):
             if filter_subdir:
                 start_path = start_path + filter_subdir
 
-            files_returned_already = set()
-            if queryset.exists():
-                for file_obj in queryset.iterator():
-                    file_obj_mapped = get_file_replacement_mapping(
-                        file_obj, self.current_path
-                    )
-                    if not os.path.exists(file_obj_mapped.get("%inputFile%")):
-                        continue
-                    files_returned_already.add(file_obj_mapped.get("%inputFile%"))
-                    yield file_obj_mapped
+        files_returned_already = set()
 
-            for basedir, _, files in os.walk(start_path):
-                for file_name in files:
-                    if filter_filename_end and not file_name.endswith(
-                        filter_filename_end
-                    ):
-                        continue
-                    file_path = os.path.join(basedir, file_name)
-                    if file_path not in files_returned_already:
-                        yield {
-                            r"%relativeLocation%": file_path,
-                            r"%fileUUID%": "None",
-                            r"%fileGrpUse%": "",
-                        }
+        for file_obj_mapped in self._database_file_replacement_mappings(queryset):
+            if not os.path.exists(file_obj_mapped.get("%inputFile%")):
+                continue
+            files_returned_already.add(file_obj_mapped.get("%inputFile%"))
+            yield file_obj_mapped
+
+        for basedir, _, files in os.walk(start_path):
+            for file_name in files:
+                if filter_filename_end and not file_name.endswith(filter_filename_end):
+                    continue
+                file_path = os.path.join(basedir, file_name)
+                if file_path not in files_returned_already:
+                    yield {
+                        r"%relativeLocation%": file_path,
+                        r"%fileUUID%": "None",
+                        r"%fileGrpUse%": "",
+                    }
 
     @auto_close_old_connections()
     def set_variable(self, key, value, chain_link_id):
