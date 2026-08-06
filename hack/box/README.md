@@ -178,10 +178,26 @@ Run `./verify.sh` to build the image and verify the Dashboard login page. Set
 smoke test in CI. Releases test the amd64 candidate digest before publishing
 the version and `latest` manifests.
 
-To create a new release, update the version number and run the release workflow
-command below (example uses v1.0.1):
+The release workflow defaults to a notes-only preview. It uses Copilot to
+summarize the upstream Archivematica and ambox commit ranges, falling back to
+deterministic commit lists when Copilot is unavailable. The generated Markdown
+is shown in the job summary and uploaded as a workflow artifact. Previewing
+does not build or publish images, push a tag, or create a GitHub Release:
 
-    gh workflow run release.yml -f version=1.0.1
+    gh workflow run release.yml -f version=1.0.14
+
+To compare generated notes with an existing release, preview its version. The
+workflow automatically uses the matching existing tag as its target:
+
+    gh workflow run release.yml -f version=1.0.13
+
+The optional `target` input can preview a different historical tag or commit.
+
+After reviewing a preview, run the workflow with publishing enabled to build
+and test the images, publish the manifests, push the tag, and create the
+GitHub Release:
+
+    gh workflow run release.yml -f version=1.0.14 -f publish=true
 
 ### Runtime service dependencies
 

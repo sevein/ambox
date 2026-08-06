@@ -4,12 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semantic version to release (e.g., 1.2.3 or 1.2.3-rc.1)"
+        description: "Semantic version to preview or release"
         required: true
         type: string
+      target:
+        description: "Optional ref for a historical notes preview"
+        required: false
+        type: string
+      publish:
+        description: "Build images, push the tag, and publish the release"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
-  group: release-${{ github.event.inputs.version }}
+  group: release-${{ inputs.version }}-${{ inputs.publish && 'publish' || 'preview' }}
   cancel-in-progress: true
 
 env:
@@ -25,14 +34,120 @@ jobs:
         uses: "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0" # v7.0.0
         with:
           sparse-checkout: .github/actions/validate-semver
+          fetch-depth: 0
+          fetch-tags: true
       - name: Validate semantic version
         uses: ./.github/actions/validate-semver
         with:
           version: ${{ github.event.inputs.version }}
+      - name: Check release tag
+        if: ${{ inputs.publish }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse --verify "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Release tag already exists: $VERSION" >&2
+            exit 1
+          fi
+
+  release-notes:
+    name: Generate release notes
+    runs-on: ubuntu-24.04
+    needs: [validate-version]
+    permissions:
+      contents: read
+      copilot-requests: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Resolve notes target
+        id: target
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          REQUESTED_TARGET: ${{ inputs.target }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$PUBLISH" == "true" && -n "$REQUESTED_TARGET" ]]; then
+            echo "A custom target can only be used for a preview" >&2
+            exit 1
+          fi
+          target_ref=$GITHUB_SHA
+          if [[ -n "$REQUESTED_TARGET" ]]; then
+            target_ref=$REQUESTED_TARGET
+          elif [[ "$PUBLISH" != "true" ]] &&
+            git rev-parse --verify "refs/tags/${VERSION}^{commit}" \
+              >/dev/null 2>&1; then
+            target_ref="refs/tags/$VERSION"
+          fi
+          target_commit=$(git rev-parse --verify "${target_ref}^{commit}")
+          echo "commit=$target_commit" >> "$GITHUB_OUTPUT"
+      - name: Prepare release-note inputs
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TARGET: ${{ steps.target.outputs.commit }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          notes_dir="$RUNNER_TEMP/release-notes"
+          .github/actions/release/prepare-notes.sh \
+            --version "$VERSION" \
+            --target "$TARGET" \
+            --repo "$REPOSITORY" \
+            --output-dir "$notes_dir" \
+            --template .github/release-notes-prompt.md
+      - name: Install Copilot CLI
+        id: install_copilot
+        continue-on-error: true
+        env:
+          COPILOT_AUTO_UPDATE: "false"
+        run: npm install --global @github/copilot@1.0.78
+      - name: Generate summaries with Copilot
+        if: ${{ steps.install_copilot.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/release-notes
+        env:
+          COPILOT_AUTO_UPDATE: "false"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          copilot -s --no-ask-user --disable-builtin-mcps \
+            < prompt.md > copilot-summary.md
+      - name: Compose release notes
+        run: |
+          notes_dir="$RUNNER_TEMP/release-notes"
+          args=(
+            --fallback "$notes_dir/fallback.md"
+            --footer "$notes_dir/footer.md"
+            --output "$notes_dir/release-notes.md"
+            --source-output "$notes_dir/source.txt"
+          )
+          if [[ -s "$notes_dir/copilot-summary.md" ]]; then
+            args+=(--summary "$notes_dir/copilot-summary.md")
+          fi
+          .github/actions/release/compose-notes.sh "${args[@]}"
+      - name: Add notes to job summary
+        run: |
+          notes_dir="$RUNNER_TEMP/release-notes"
+          source=$(<"$notes_dir/source.txt")
+          {
+            printf '# Release notes preview\n\n'
+            printf 'Summary source: `%s`\n\n' "$source"
+            cat "$notes_dir/release-notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload release notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: release-notes-${{ inputs.version }}
+          path: ${{ runner.temp }}/release-notes
+          if-no-files-found: error
+          retention-days: 7
 
   image-build:
     name: "Build Docker images"
     needs: [validate-version, seed-cache]
+    if: ${{ inputs.publish }}
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +227,7 @@ jobs:
   image-test:
     name: "Test Docker image"
     needs: [image-build]
+    if: ${{ inputs.publish }}
     permissions:
       actions: read
       contents: read
@@ -125,6 +241,7 @@ jobs:
     name: "Publish Docker manifests"
     runs-on: ubuntu-24.04
     needs: [image-test]
+    if: ${{ inputs.publish }}
     permissions:
       contents: read
       packages: write
@@ -170,8 +287,16 @@ jobs:
   release:
     name: Create GitHub release
     runs-on: ubuntu-24.04
-    needs: [image-merge]
+    needs: [image-merge, release-notes]
+    if: >-
+      ${{
+        always() &&
+        inputs.publish &&
+        needs.image-merge.result == 'success' &&
+        needs.release-notes.result == 'success'
+      }}
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Check out the repository
@@ -179,10 +304,17 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Download release notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes-${{ inputs.version }}
+          path: ${{ runner.temp }}/release-notes
       - name: Push release tag
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          git tag ${{ github.event.inputs.version }}
-          git push origin refs/tags/${{ github.event.inputs.version }}
+          git tag "$VERSION"
+          git push origin "refs/tags/$VERSION"
       - name: Create GitHub Release
         uses: ./.github/actions/release
         env:
@@ -190,10 +322,12 @@ jobs:
         with:
           tag: ${{ github.event.inputs.version }}
           title: ${{ github.event.inputs.version }}
+          notes-file: ${{ runner.temp }}/release-notes/release-notes.md
 
   seed-cache:
     name: "Build seed cache"
     needs: [validate-version]
+    if: ${{ inputs.publish }}
     permissions:
       contents: read
       packages: write

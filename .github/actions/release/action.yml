@@ -1,5 +1,5 @@
 name: Create GitHub Release
-description: Generate release notes and create a GitHub release using the gh CLI.
+description: Create a GitHub release using prepared or generated release notes.
 
 inputs:
   tag:
@@ -10,6 +10,9 @@ inputs:
     required: false
   repo:
     description: Repository slug to operate on (defaults to current repo)
+    required: false
+  notes-file:
+    description: Path to prepared release notes
     required: false
   prerelease:
     description: Set to "true" to mark the release as a prerelease
@@ -23,6 +26,7 @@ runs:
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_TITLE: ${{ inputs.title }}
         INPUT_REPO: ${{ inputs.repo }}
+        INPUT_NOTES_FILE: ${{ inputs.notes-file }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
       run: |
         set -euo pipefail
@@ -33,6 +37,9 @@ runs:
         fi
         if [[ -n "${INPUT_REPO}" ]]; then
           args+=(--repo "${INPUT_REPO}")
+        fi
+        if [[ -n "${INPUT_NOTES_FILE}" ]]; then
+          args+=(--notes-file "${INPUT_NOTES_FILE}")
         fi
         if [[ -n "${INPUT_PRERELEASE}" ]]; then
           args+=(--prerelease="${INPUT_PRERELEASE}")

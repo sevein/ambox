@@ -3,11 +3,12 @@ set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: release-notes.sh [options] <tag>
+Usage: release.sh [options] <tag>
 
 Options
   --title <title>        Release title (defaults to tag)
   --repo <owner/repo>    Repository slug if not running inside the repo
+  --notes-file <path>    Use prepared release notes instead of generating them
   --prerelease[=bool]    Mark the release as a prerelease (accepts true/false)
   --dry-run              Show the command without executing it
   -h, --help             Show this help text
@@ -25,6 +26,7 @@ fi
 current_tag=""
 repo_arg=""
 title=""
+notes_file=""
 prerelease_flag=""
 dry_run="false"
 
@@ -59,6 +61,14 @@ while [[ $# -gt 0 ]]; do
       exit 1
     }
     repo_arg="$2"
+    shift 2
+    ;;
+  --notes-file)
+    [[ $# -ge 2 ]] || {
+      echo "--notes-file requires a value" >&2
+      exit 1
+    }
+    notes_file="$2"
     shift 2
     ;;
   --prerelease)
@@ -128,74 +138,22 @@ if ! git rev-parse "$current_tag^{commit}" >/dev/null 2>&1; then
   exit 1
 fi
 
-upstream_repo="artefactual/archivematica"
-upstream_branch="qa/1.x"
-upstream_url="https://github.com/${upstream_repo}.git"
-if git remote get-url upstream >/dev/null 2>&1; then
-  current_upstream_url="$(git remote get-url upstream)"
-  if [[ "$current_upstream_url" != "$upstream_url" ]]; then
-    git remote set-url upstream "$upstream_url"
-  fi
-else
-  git remote add upstream "$upstream_url"
-fi
-git fetch --no-tags upstream "${upstream_branch}"
-
-upstream_base_commit=""
-upstream_base_short=""
-upstream_commit_url=""
-if upstream_base_commit="$(git merge-base "$current_tag" "upstream/${upstream_branch}" 2>/dev/null)"; then
-  upstream_base_short="$(git rev-parse --short=8 "$upstream_base_commit")"
-  upstream_commit_url="https://github.com/${upstream_repo}/commit/${upstream_base_commit}"
-else
-  echo "Warning: unable to determine upstream base commit for $current_tag" >&2
-fi
-
-if [[ "$current_tag" == *-* ]]; then
-  previous_tag="$(git describe --tags --abbrev=0 --match '[0-9]*' "${current_tag}^" 2>/dev/null || true)"
-else
-  previous_tag="$(git describe --tags --abbrev=0 --match '[0-9]*' --exclude '*-*' "${current_tag}^" 2>/dev/null || true)"
-fi
-notes_file="$(mktemp -t release-notes.XXXXXX)"
-
-if [[ -z "$previous_tag" ]]; then
-  : >"$notes_file"
-  echo "No previous release tag found for $current_tag; creating empty release notes"
-else
-  if ! git rev-parse "$previous_tag^{commit}" >/dev/null 2>&1; then
-    echo "Tag $previous_tag is not available locally" >&2
+if [[ -n "$notes_file" ]]; then
+  if [[ ! -f "$notes_file" ]]; then
+    echo "Release notes file not found: $notes_file" >&2
     exit 1
   fi
-
-  compare_url="https://github.com/${repo}/compare/${previous_tag}...${current_tag}"
-
-  commit_lines=()
-  while IFS=$'\t' read -r sha title_line author; do
-    [[ -z "$sha" ]] && continue
-    commit_lines+=("* $sha: $title_line ($author)")
-  done < <(git log --format='%h%x09%s%x09%an' "${previous_tag}..${current_tag}" \
-    --not "upstream/${upstream_branch}")
-
-  if [[ ${#commit_lines[@]} -eq 0 ]]; then
-    if [[ -n "$upstream_repo" ]]; then
-      commit_lines+=("* No fork-only commits between ${previous_tag} and ${current_tag}")
-    else
-      commit_lines+=("* No commits between ${previous_tag} and ${current_tag}")
-    fi
-  fi
-
-  {
-    if [[ -n "$upstream_base_commit" ]]; then
-      printf 'Based on upstream commit [%s](%s).\n\n' "$upstream_base_short" "$upstream_commit_url"
-    fi
-    printf '## Container images\n\n'
-    printf 'Multi-architecture image available at:\n\n'
-    printf -- '- `ghcr.io/sevein/ambox:%s`\n' "$current_tag"
-    printf -- '- `docker.io/artefactual/ambox:%s`\n\n' "$current_tag"
-    printf '## Changelog\n\n'
-    printf '%s\n' "${commit_lines[@]}"
-    printf '\n%s\n' "$compare_url"
-  } >"$notes_file"
+else
+  action_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  repo_root="$(git rev-parse --show-toplevel)"
+  notes_dir="$(mktemp -d -t ambox-release-notes.XXXXXX)"
+  "$action_dir/prepare-notes.sh" \
+    --version "$current_tag" \
+    --target "$current_tag" \
+    --repo "$repo" \
+    --output-dir "$notes_dir" \
+    --template "$repo_root/.github/release-notes-prompt.md"
+  notes_file="$notes_dir/fallback.md"
 fi
 
 cmd=(gh release create "$current_tag" --title "$title" --notes-file "$notes_file" --repo "$repo")

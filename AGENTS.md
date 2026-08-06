@@ -63,13 +63,15 @@ Upstream is `https://github.com/artefactual/archivematica.git`, branch
 Releases are driven by the GitHub Actions workflow
 `.github/workflows/release.yml`:
 
-- Workflow input: semantic version string (e.g. `1.2.3` or `1.2.3-rc.1`).
+- Workflow inputs: semantic version string (e.g. `1.2.3` or `1.2.3-rc.1`),
+  optional historical target ref, and a `publish` flag that defaults to false.
+- The default run previews Copilot-assisted release notes without building or
+  publishing images, tags, or a GitHub Release.
 - Pull requests build and smoke-test an amd64 image.
-- Releases build multi-arch candidates (amd64/arm64) with buildx and test the
-  amd64 digest before publishing manifests.
-- Pushes to Docker Hub `artefactual/ambox` and GHCR
-  `ghcr.io/<repo_owner>/ambox`, tagging both `<version>` and `latest`.
-- Publishes a GitHub Release and tags the repo.
+- Runs with `publish=true` build multi-arch candidates (amd64/arm64) with
+  buildx, test the amd64 digest, push `<version>` and `latest` manifests to
+  Docker Hub `artefactual/ambox` and GHCR `ghcr.io/<repo_owner>/ambox`, and
+  publish a GitHub Release and repository tag.
 
 If you change release behavior, update the workflow and any docs that mention
 the process.
