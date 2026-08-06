@@ -40,6 +40,22 @@ Ports exposed by the container:
   page at `http://localhost:64080/`, 3) stop the `ambox-test` container. Use
   `hack/box/verify.sh` to run this workflow automatically.
 
+## Upstream synchronization
+
+Upstream is `https://github.com/artefactual/archivematica.git`, branch
+`qa/1.x`.
+
+1. Start a sync branch from an updated `origin/dev/ambox` and fetch upstream.
+2. Merge `upstream/qa/1.x` with `--no-ff` and the subject
+   `Merge Archivematica qa/1.x`.
+3. Preserve ambox-specific CI and release behavior, adapt `hack/box/` to
+   upstream build changes, and do not edit generated code.
+4. Open a PR targeting `dev/ambox`; record the upstream SHA and conflict
+   decisions.
+5. Use PR CI as the validation gate. Add or update checks when coverage is
+   missing; do not merge until review and all checks pass.
+6. Merge the PR with a merge commit; never squash or rebase.
+
 ## Release flow (CI)
 
 Releases are driven by the GitHub Actions workflow
