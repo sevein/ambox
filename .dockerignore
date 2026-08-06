@@ -16,8 +16,9 @@
 # Include.
 !/src
 !/src/**
+!/.python-version
 !/pyproject.toml
-!/requirements*
+!/uv.lock
 !/LICENSE
 !/COPYRIGHT
 !/TRADEMARK

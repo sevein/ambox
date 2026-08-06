@@ -13,8 +13,24 @@ from archivematica.MCPServer.server import metrics
 from archivematica.MCPServer.server.jobs import DecisionJob
 from archivematica.MCPServer.server.packages import DIP
 from archivematica.MCPServer.server.packages import SIP
+from archivematica.MCPServer.server.tasks import Task
 
 logger = logging.getLogger("archivematica.mcp.server.queues")
+
+FAILED_PACKAGE_TERMINAL_LINK_IDS = frozenset(
+    {
+        # Terminal link for the transfer-source retrieval failure branch. This
+        # path can end before the transfer reaches its normal type-specific
+        # workflow, so PackageQueue must mark it as Failed instead of applying
+        # the historical terminal-link default of Done.
+        "e782473a-0c10-431f-8ab6-5d7238b2b70b",
+    }
+)
+
+TASK_EXCEPTION_MESSAGE = (
+    "MCPServer stopped tracking this task because job {job_uuid} failed "
+    "unexpectedly; the final task result may be unknown. See MCPServer logs."
+)
 
 
 class PackageQueue:
@@ -177,17 +193,18 @@ class PackageQueue:
         metrics.active_jobs_gauge.inc()
 
         result = self.executor.submit(job.run)
-        result.add_done_callback(self._job_completed_callback)
+        job_done_callback = functools.partial(self._job_completed_callback, job)
+        result.add_done_callback(job_done_callback)
 
         if job.link.is_terminal:
             package_done_callback = functools.partial(
-                self._package_completed_callback, job.package, job.link.id
+                self._package_completed_callback, job.package, job.link
             )
             result.add_done_callback(package_done_callback)
 
         return result
 
-    def _package_completed_callback(self, package, link_id, future):
+    def _package_completed_callback(self, package, link, future):
         """Marks the package as inactive and schedules a new package.
 
         It is assumed that a package is only complete when a terminal link is
@@ -195,21 +212,44 @@ class PackageQueue:
         job in the chain. This function is called by an executor on completion
         of a Job.
         """
+        if future.cancelled() or future.exception() is not None:
+            return
+
         if future.result() is not None:
             logger.warning(
                 "Unexpectedly received another job on package completion. "
                 "Please verify the value of `end` in the workflow. Link %s.",
-                link_id,
+                link.id,
             )
             return
 
-        # TODO: can we be more specific? E.g. failed or completed.
-        package.mark_as_done()
+        if self._link_completes_as_failed(link):
+            package.mark_as_failed()
+        else:
+            package.mark_as_done()
 
         self.deactivate_package(package)
         self.queue_next_job()
 
-    def _job_completed_callback(self, future):
+    def _link_completes_as_failed(self, link):
+        """Return whether a terminal link should fail the package.
+
+        PackageQueue historically marks every terminal workflow link as Done.
+        Transfer-source retrieval adds a terminal failure path that can be
+        reached before the transfer has entered its normal type-specific
+        workflow, so the package must be marked as Failed when that path ends.
+
+        Use explicit workflow link IDs here instead of inferring behavior from
+        translated group labels such as "Failed transfer". Those labels are
+        display text, not a stable machine-readable contract. Other terminal
+        links can be added to this list as narrow compatibility exceptions, but
+        if this behavior expands beyond a few explicit cases then the workflow
+        schema should declare terminal package status directly, e.g. with a
+        package-status field on terminal links.
+        """
+        return str(link.id) in FAILED_PACKAGE_TERMINAL_LINK_IDS
+
+    def _job_completed_callback(self, job, future):
         """Schedule the next job in the chain.
 
         Retrieve the next job from the result from the previous job. If there is
@@ -217,6 +257,16 @@ class PackageQueue:
         called by an executor on completion of a Job.
         """
         metrics.active_jobs_gauge.dec()
+
+        if future.cancelled():
+            self._handle_job_failure(job, RuntimeError("Job future was cancelled"))
+            return
+
+        exception = future.exception()
+        if exception is not None:
+            self._handle_job_failure(job, exception)
+            return
+
         next_job = future.result()
 
         if not next_job:
@@ -226,6 +276,44 @@ class PackageQueue:
             self.queue_next_job()
         else:
             self.schedule_job(next_job)
+
+    def _handle_job_failure(self, job, exception):
+        """Record an unexpected job failure and release its package slot."""
+        logger.error(
+            "Unexpected error processing job %s (%s; link %s) for %s package %s",
+            job.uuid,
+            job.description,
+            job.link.id,
+            job.package.__class__.__name__,
+            job.package.uuid,
+            exc_info=(type(exception), exception, exception.__traceback__),
+        )
+
+        failure_actions = (
+            ("increment the job exception counter", metrics.job_exception_counter.inc),
+            ("mark the job as failed", job.mark_failed),
+            (
+                "mark unfinished tasks as failed",
+                functools.partial(
+                    Task.mark_unfinished_for_job_failed,
+                    job.uuid,
+                    TASK_EXCEPTION_MESSAGE.format(job_uuid=job.uuid),
+                ),
+            ),
+            ("mark the package as failed", job.package.mark_as_failed),
+            (
+                "deactivate the package",
+                functools.partial(self.deactivate_package, job.package),
+            ),
+            ("queue the next package", self.queue_next_job),
+        )
+        for description, action in failure_actions:
+            try:
+                action()
+            except Exception:
+                logger.exception(
+                    "Unable to %s after job %s failed", description, job.uuid
+                )
 
     def _put_package_nowait(self, package, job):
         """Queue a package and job for later processing."""

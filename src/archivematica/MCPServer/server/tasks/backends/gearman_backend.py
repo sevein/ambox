@@ -78,6 +78,27 @@ class GearmanTaskBackend(TaskBackend):
         self.current_task_batches = {}  # job_uuid: GearmanTaskBatch
         self.pending_gearman_jobs = {}  # job_uuid: List[GearmanTaskBatch]
 
+    def shutdown(self):
+        """Close the client and discard state that cannot be resumed safely."""
+        pending_count = sum(
+            bool(len(batch)) for batch in self.current_task_batches.values()
+        )
+        active_count = sum(
+            not batch.collected
+            for batches in self.pending_gearman_jobs.values()
+            for batch in batches
+        )
+
+        try:
+            self.client.shutdown()
+        finally:
+            if pending_count:
+                metrics.gearman_pending_jobs_gauge.dec(pending_count)
+            if active_count:
+                metrics.gearman_active_jobs_gauge.dec(active_count)
+            self.current_task_batches.clear()
+            self.pending_gearman_jobs.clear()
+
     def submit_task(self, job, task):
         """Submit a `Task` (as part of the `Job` given) for processing.
 
@@ -234,13 +255,30 @@ class GearmanTaskBatch:
             )
 
     def update_task_results(self):
-        if self.failed:
-            logger.error("Gearman task batch %s failed to execute", self.uuid)
+        """Yield tasks after applying either client or transport-level results.
 
+        Successful Gearman jobs return per-task MCPClient results, which are
+        copied back onto each Task before the job chain advances. A Gearman
+        batch can also fail before MCPClient returns that payload, for example
+        when the worker cannot execute the submitted job. In that case there is
+        no per-task result to parse, but the Task rows were already created at
+        submission time. Mark each task failed here so task detail pages and
+        status APIs expose the transport failure instead of leaving the tasks
+        looking unfinished.
+        """
+        if self.failed:
+            message = f"Gearman task batch {self.uuid} failed to execute."
+            exception = getattr(self.pending, "exception", None)
+            if exception:
+                message = f"{message} {exception}"
+            logger.error(message)
             for task in self.tasks:
                 task.exit_code = 1
+                task.stderr = message
+                task.finished_timestamp = datetime.datetime.now(datetime.timezone.utc)
                 task.done = True
-                yield task
+            Task.bulk_mark_failed(self.tasks, message)
+            yield from self.tasks
         else:
             result = self.result()
             for task in self.tasks:

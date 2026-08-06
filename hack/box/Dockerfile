@@ -4,7 +4,7 @@ ARG GROUP_ID=1000
 ARG UBUNTU_VERSION=noble-20251013
 ARG S6_OVERLAY_VERSION=3.2.1.0
 ARG PYTHON_VERSION=3.10.19
-ARG UV_VERSION=0.9.18
+ARG UV_VERSION=0.11.30
 ARG NODE24_VERSION=24.12.0
 ARG SFTPGO_VERSION=2.7.0
 ARG MEDIAAREA_VERSION=1.0-25
@@ -72,7 +72,7 @@ ARG PYTHON_VERSION
 ARG USER_ID
 ARG GROUP_ID
 
-# Build dependencies for Python packages in requirements.txt.
+# Build dependencies for the locked Python projects.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt,sharing=locked \
 	set -ex \
@@ -109,17 +109,23 @@ USER archivematica
 RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=${USER_ID},gid=${GROUP_ID} \
     uv python install ${PYTHON_VERSION}
 
-COPY requirements.txt /requirements-am.txt
+COPY --link .python-version pyproject.toml uv.lock /dependencies/archivematica/
 RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=${USER_ID},gid=${GROUP_ID} \
     set -ex \
-	&& uv venv --python ${PYTHON_VERSION} /venv \
-	&& uv pip install --python /venv/bin/python -r /requirements-am.txt
+	&& cd /dependencies/archivematica \
+	&& UV_PROJECT_ENVIRONMENT=/venv \
+		uv sync --locked --no-dev --no-install-project --python ${PYTHON_VERSION}
 
-COPY hack/submodules/archivematica-storage-service/requirements.txt /requirements-ss.txt
+COPY --link \
+	hack/submodules/archivematica-storage-service/.python-version \
+	hack/submodules/archivematica-storage-service/pyproject.toml \
+	hack/submodules/archivematica-storage-service/uv.lock \
+	/dependencies/storage-service/
 RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=${USER_ID},gid=${GROUP_ID} \
     set -ex \
-	&& uv venv --python ${PYTHON_VERSION} /venv-ss \
-	&& uv pip install --python /venv-ss/bin/python -r /requirements-ss.txt
+	&& cd /dependencies/storage-service \
+	&& UV_PROJECT_ENVIRONMENT=/venv-ss \
+		uv sync --locked --no-dev --no-install-project --python ${PYTHON_VERSION}
 
 # frontend-builder provides the dashboard frontend assets.
 #

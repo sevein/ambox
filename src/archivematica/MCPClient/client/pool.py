@@ -19,6 +19,7 @@ import multiprocessing
 import os
 import threading
 import time
+from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Event
 from types import ModuleType
 from typing import Optional
@@ -45,6 +46,14 @@ class QueueLike(Protocol[T]):
 
 
 LogQueue = QueueLike[logging.LogRecord]
+MetricQueue = metrics.MetricQueue
+METRIC_QUEUE_MAX_SIZE = 10000
+
+# Use forkserver so workers are not forked directly from the long-lived parent.
+# The parent has threads for logging, metrics, and pool maintenance; forking a
+# process with active threads and inherited locks is fragile. Forkserver still
+# gives us process isolation while starting children from a simpler process.
+MP_CONTEXT = multiprocessing.get_context("forkserver")
 
 # This is how the return value of the `_get_worker_init_args` method looks
 # below:
@@ -52,6 +61,7 @@ LogQueue = QueueLike[logging.LogRecord]
 #     (
 #         (
 #             "<multiprocessing.queues.Queue object at 0x7609ba4badf0>",
+#             "<multiprocessing.queues.Queue object at 0x7609ba4baf00>",
 #             [
 #                 "archivematicaclamscan_v0.0",
 #                 "examinecontents_v0.0",
@@ -66,13 +76,14 @@ LogQueue = QueueLike[logging.LogRecord]
 #     ),
 #     ...
 # ]
-WorkerInitArgs = list[tuple[tuple[LogQueue, list[str]], dict[str, Event]]]
+WorkerInitArgs = list[tuple[tuple[LogQueue, MetricQueue, list[str]], dict[str, Event]]]
 
 logger = logging.getLogger("archivematica.mcp.client.worker")
 
 
 def run_gearman_worker(
     log_queue: LogQueue,
+    metrics_queue: MetricQueue,
     client_scripts: list[str],
     shutdown_event: Optional[Event] = None,
 ) -> None:
@@ -81,6 +92,7 @@ def run_gearman_worker(
     logger = logging.getLogger("archivematica.mcp.client")
     queue_handler = logging.handlers.QueueHandler(log_queue)
     logger.addHandler(queue_handler)
+    metrics.configure_event_queue(metrics_queue)
 
     process_id = multiprocessing.current_process().pid
     gearman_hosts = [settings.GEARMAN_SERVER]
@@ -106,9 +118,12 @@ class WorkerPool:
 
     def __init__(self) -> None:
         self._parent_pid = os.getpid()
-        self.log_queue: LogQueue = multiprocessing.Queue()
-        self.shutdown_event = multiprocessing.Event()
-        self.workers: list[multiprocessing.Process] = []
+        self.log_queue: LogQueue = MP_CONTEXT.Queue()
+        self.metrics_queue: MetricQueue = MP_CONTEXT.Queue(
+            maxsize=METRIC_QUEUE_MAX_SIZE
+        )
+        self.shutdown_event = MP_CONTEXT.Event()
+        self.workers: list[BaseProcess] = []
         self.job_modules = loader.load_job_modules(settings.CLIENT_MODULES_FILE)
         self.worker_function = run_gearman_worker
 
@@ -121,8 +136,12 @@ class WorkerPool:
 
         self.pool_maintainance_thread: Optional[threading.Thread] = None
         self.logging_listener: Optional[logging.handlers.QueueListener] = None
+        self.metrics_listener: Optional[metrics.EventListener] = None
 
     def start(self) -> None:
+        self.metrics_listener = metrics.EventListener(self.metrics_queue)
+        self.metrics_listener.start()
+
         self.logging_listener = logging.handlers.QueueListener(
             self.log_queue,
             *logger.handlers,
@@ -154,12 +173,11 @@ class WorkerPool:
             if worker.is_alive():
                 worker.terminate()
 
-        for worker in self.workers:
-            if not worker.is_alive():
-                metrics.worker_exit(worker.pid)
-
         if self.logging_listener is not None:
             self.logging_listener.stop()
+
+        if self.metrics_listener is not None:
+            self.metrics_listener.stop()
 
     def _get_script_workers_required(
         self, job_modules: dict[str, Optional[ModuleType]]
@@ -190,7 +208,7 @@ class WorkerPool:
 
         return [
             (
-                (self.log_queue, worker_init_scripts),
+                (self.log_queue, self.metrics_queue, worker_init_scripts),
                 {
                     "shutdown_event": self.shutdown_event,
                 },
@@ -213,17 +231,16 @@ class WorkerPool:
         restarted = False
         for index, worker in enumerate(self.workers):
             if worker.exitcode is not None:
-                metrics.worker_exit(worker.pid)
                 worker.join()
                 restarted = True
                 self.workers[index] = self._start_worker(index)
 
         return restarted
 
-    def _start_worker(self, index: int) -> multiprocessing.Process:
+    def _start_worker(self, index: int) -> BaseProcess:
         """Start the new worker in a separate process."""
         worker_args, worker_kwargs = self._worker_init_args[index]
-        worker = multiprocessing.Process(
+        worker = MP_CONTEXT.Process(
             name=f"MCPClientWorker-{index}",
             target=self.worker_function,
             args=worker_args,

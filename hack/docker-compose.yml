@@ -29,7 +29,7 @@ volumes:
 services:
 
   mysql:
-    image: "percona/percona-server:8.4.8-8"
+    image: "percona/percona-server:8.4.10-10"
     command: "--character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci"
     environment:
       MYSQL_ROOT_PASSWORD: "12345"
@@ -45,7 +45,7 @@ services:
       - "SYS_NICE"
 
   elasticsearch:
-    image: "docker.elastic.co/elasticsearch/elasticsearch:8.19.14"
+    image: "docker.elastic.co/elasticsearch/elasticsearch:8.19.19"
     environment:
       - "cluster.name=am-cluster"
       - "node.name=am-node"
@@ -75,14 +75,14 @@ services:
       - "127.0.0.1:62002:9200"
 
   gearmand:
-    image: "artefactual/gearmand:1.1.22.1-alpine"
+    image: "artefactual/gearmand:2.0.0-alpine"
     command: "--queue-type=builtin"
     user: "gearman"
     ports:
       - "127.0.0.1:62004:4730"
 
   clamavd:
-    image: "clamav/clamav-debian:1.5.2-37"
+    image: "clamav/clamav-debian:1.5.3"
     user: "clamav"
     entrypoint: "/init-unprivileged"
     environment:
@@ -95,7 +95,7 @@ services:
       - "archivematica_pipeline_data:/var/archivematica/sharedDirectory:ro"
 
   nginx:
-    image: "nginx:1.29.8"
+    image: "nginx:1.31.3"
     volumes:
       - "./etc/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
       - "./etc/nginx/conf.d/archivematica.conf:/etc/nginx/conf.d/archivematica.conf:ro"
@@ -113,7 +113,7 @@ services:
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
         UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+        PYTHON_VERSION: ${PYTHON_VERSION:-}
     environment:
       DJANGO_SECRET_KEY: "12345"
       DJANGO_SETTINGS_MODULE: "archivematica.MCPServer.settings.common"
@@ -141,7 +141,7 @@ services:
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
         UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+        PYTHON_VERSION: ${PYTHON_VERSION:-}
     environment:
       DJANGO_SECRET_KEY: "12345"
       DJANGO_SETTINGS_MODULE: "archivematica.MCPClient.settings.common"
@@ -182,7 +182,7 @@ services:
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
         UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+        PYTHON_VERSION: ${PYTHON_VERSION:-}
     environment:
       FORWARDED_ALLOW_IPS: "*"
       AM_GUNICORN_ACCESSLOG: "/dev/null"
@@ -220,7 +220,7 @@ services:
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
         UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+        PYTHON_VERSION: ${PYTHON_VERSION:-}
     environment:
       FORWARDED_ALLOW_IPS: "*"
       SS_GUNICORN_ACCESSLOG: "/dev/null"
