@@ -35,6 +35,9 @@ build:
 		$(CURDIR)/../../
 
 run: build
+	$(MAKE) run-image
+
+run-image:
 	docker run --name=ambox-test --rm \
 		-p64080:64080 -p64081:64081 -p64022:64022 \
 		-v $(CURDIR)/test/ambox.yaml:/etc/ambox/config.yaml:ro \

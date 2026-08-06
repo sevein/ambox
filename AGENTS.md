@@ -19,6 +19,7 @@ explicitly needs core Archivematica code.
 - `hack/box/Makefile`: build/run helpers.
 - `hack/box/scripts/`: build helpers, including seed-cache tooling.
 - `hack/box/s6-rc.d/`: service supervision graph.
+- `.github/workflows/test.yml`: image build and smoke tests.
 - `.github/workflows/release.yml`: release pipeline.
 
 ## Common commands (local)
@@ -38,7 +39,8 @@ Ports exposed by the container:
   error, stop the existing `ambox-test` container before retrying.
 - Simple verification workflow: 1) run `make run`, 2) curl the dashboard login
   page at `http://localhost:64080/`, 3) stop the `ambox-test` container. Use
-  `hack/box/verify.sh` to run this workflow automatically.
+  `hack/box/verify.sh` to run this workflow automatically. Set
+  `AMBOX_SKIP_BUILD=1` to test an existing `IMAGE:TAG`.
 
 ## Upstream synchronization
 
@@ -62,7 +64,9 @@ Releases are driven by the GitHub Actions workflow
 `.github/workflows/release.yml`:
 
 - Workflow input: semantic version string (e.g. `1.2.3` or `1.2.3-rc.1`).
-- Builds multi-arch images (amd64/arm64) with buildx.
+- Pull requests build and smoke-test an amd64 image.
+- Releases build multi-arch candidates (amd64/arm64) with buildx and test the
+  amd64 digest before publishing manifests.
 - Pushes to Docker Hub `artefactual/ambox` and GHCR
   `ghcr.io/<repo_owner>/ambox`, tagging both `<version>` and `latest`.
 - Publishes a GitHub Release and tags the repo.

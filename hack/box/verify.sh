@@ -36,7 +36,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-make -C "$ROOT_DIR/hack/box" run &
+RUN_TARGET=run
+if [ "${AMBOX_SKIP_BUILD:-0}" = "1" ]; then
+  RUN_TARGET=run-image
+fi
+
+make -C "$ROOT_DIR/hack/box" "$RUN_TARGET" &
 MAKE_PID=$!
 
 DASH_OK=0
