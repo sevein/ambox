@@ -38,10 +38,28 @@ jobs:
         env:
           SEED_CACHE_IMAGE_REMOTE: ghcr.io/${{ github.repository_owner }}/ambox-build-cache
         run: make -C hack/box build
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: hack/box/e2e/uv.lock
+      - name: Install Chromium
+        run: >-
+          uv run --project hack/box/e2e --locked
+          playwright install --with-deps chromium
       - name: Test image
         env:
           AMBOX_SKIP_BUILD: "1"
-        run: ./hack/box/verify.sh
+        run: make -C hack/box verify
+      - name: Upload end-to-end failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}
+          path: hack/box/e2e/output
+          if-no-files-found: warn
+          retention-days: 7
 
   test-candidate:
     name: Test release candidate
@@ -88,7 +106,25 @@ jobs:
         run: |
           docker pull "$CANDIDATE_IMAGE@$IMAGE_DIGEST"
           docker tag "$CANDIDATE_IMAGE@$IMAGE_DIGEST" artefactual/ambox:test
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: hack/box/e2e/uv.lock
+      - name: Install Chromium
+        run: >-
+          uv run --project hack/box/e2e --locked
+          playwright install --with-deps chromium
       - name: Test candidate image
         env:
           AMBOX_SKIP_BUILD: "1"
-        run: ./hack/box/verify.sh
+        run: make -C hack/box verify
+      - name: Upload end-to-end failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}
+          path: hack/box/e2e/output
+          if-no-files-found: warn
+          retention-days: 7

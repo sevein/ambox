@@ -1,0 +1,18 @@
+[project]
+name = "ambox-e2e"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "pytest>=8.3,<9",
+  "pytest-bdd>=8.1,<9",
+  "pytest-playwright>=0.8,<1",
+  "pytest-timeout>=2.3,<3",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "-ra -vv -s --gherkin-terminal-reporter --browser chromium --tracing retain-on-failure --screenshot only-on-failure"
+testpaths = ["."]
+timeout = 1800

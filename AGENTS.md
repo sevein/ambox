@@ -37,10 +37,12 @@ Ports exposed by the container:
 - `64022` SFTP (user `archivematica`, password `12345`)
 - `make run` names the container `ambox-test`. If it fails with a port bind
   error, stop the existing `ambox-test` container before retrying.
-- Simple verification workflow: 1) run `make run`, 2) curl the dashboard login
-  page at `http://localhost:64080/`, 3) stop the `ambox-test` container. Use
-  `hack/box/verify.sh` to run this workflow automatically. Set
-  `AMBOX_SKIP_BUILD=1` to test an existing `IMAGE:TAG`.
+- Verification runs a pytest-bdd scenario that starts ambox, submits the bundled
+  pictures, waits for transfer and ingest completion, and confirms the uploaded
+  AIP through the APIs. Playwright then verifies the completed transfer and
+  ingest workflow in Dashboard. Run it with `make verify`; set
+  `AMBOX_SKIP_BUILD=1` to test an existing `IMAGE:TAG`. Failure artifacts are
+  written under `hack/box/e2e/output/`.
 
 ## Upstream synchronization
 
