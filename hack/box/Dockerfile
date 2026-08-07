@@ -174,6 +174,10 @@ RUN set -ex \
 	&& dpkg -i /tmp/repo-mediaarea.deb \
 	&& rm /tmp/repo-mediaarea.deb
 
+# Vanilla Archivematica uses clamav/clamav-debian, where clamd's VERSION
+# command remains enabled. Ubuntu's package disables it by default, but
+# Archivematica requires the daemon and definition versions for virus-check
+# PREMIS events.
 # Install system packages.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -227,6 +231,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		unrar-free \
 		uuid \
 		xz-utils \
+	&& sed -i 's/^EnableVersionCommand .*/EnableVersionCommand true/' /etc/clamav/clamd.conf \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Update ClamAV virus definitions.
