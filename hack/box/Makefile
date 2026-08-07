@@ -44,6 +44,14 @@ run-image:
 		-v $(CURDIR)/test/ssh_host_ed25519_key:/etc/ambox/sftpgo_host_key:ro \
 		$(IMAGE):$(TAG)
 
+verify:
+	uv run --project $(CURDIR)/e2e --locked \
+		playwright install chromium
+	uv run --project $(CURDIR)/e2e --locked \
+		pytest -c $(CURDIR)/e2e/pyproject.toml \
+		--output=$(CURDIR)/e2e/output/playwright \
+		$(CURDIR)/e2e
+
 sftp-publickey:
 	sftp \
 		-P 64022 \

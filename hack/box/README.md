@@ -173,10 +173,16 @@ The bundled `hack/box/Makefile` mounts `test/ambox.yaml` and the SFTP test
 keys under `test/` to simplify local development. Adjust those mounts if you
 want different config or key paths.
 
-Run `./verify.sh` to build the image and verify the Dashboard login page. Set
-`AMBOX_SKIP_BUILD=1` to verify an existing `IMAGE:TAG`. Pull requests run this
-smoke test in CI. Releases test the amd64 candidate digest before publishing
-the version and `latest` manifests.
+Run `make verify` to build the image and process a bundled sample transfer into
+an AIP. The pytest-bdd scenario uses the APIs to submit and monitor the workflow,
+checks that jobs and tasks were created, confirms the uploaded AIP in Storage
+Service, and uses Playwright with Chromium to verify the same transfer, virus
+scan, and ingest results in Dashboard. `make verify` installs the matching
+Chromium build automatically. Set `AMBOX_SKIP_BUILD=1` to verify an existing
+`IMAGE:TAG`. On CI failures, browser traces and screenshots, recent API
+responses, and container logs are uploaded as artifacts. Pull requests run this
+end-to-end test in CI. Releases test the amd64 candidate digest before
+publishing the version and `latest` manifests.
 
 The release workflow defaults to a notes-only preview. It uses Copilot to
 summarize the upstream Archivematica and ambox commit ranges, falling back to
