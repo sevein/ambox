@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import http.client
+import json
 import os
+import socket
 import subprocess
 import time
 import urllib.error
@@ -13,6 +15,14 @@ from clients import Services
 E2E_ROOT = Path(__file__).resolve().parent
 BOX_ROOT = E2E_ROOT.parent
 CONTAINER_NAME = "ambox-test"
+STORAGE_MOUNT_TARGETS = {
+    "/home/archivematica/transfers",
+    "/var/archivematica/sharedDirectory/www/AIPsStore",
+    "/var/archivematica/sharedDirectory/www/DIPsStore",
+}
+DEFAULT_RUN_ARGS = " ".join(
+    f"--mount=type=volume,target={target}" for target in sorted(STORAGE_MOUNT_TARGETS)
+)
 
 
 def clear_failure_artifacts(output_root: Path) -> None:
@@ -59,8 +69,34 @@ def start_ambox() -> subprocess.Popen[bytes]:
         )
 
     target = "run-image" if os.getenv("AMBOX_SKIP_BUILD", "0") == "1" else "run"
-    print(f"Starting ambox with make target {target}", flush=True)
-    return subprocess.Popen(["make", "-C", str(BOX_ROOT), target])
+    run_args = os.getenv("AMBOX_RUN_ARGS", DEFAULT_RUN_ARGS)
+    print(
+        f"Starting ambox with make target {target} and storage volumes",
+        flush=True,
+    )
+    return subprocess.Popen(
+        ["make", "-C", str(BOX_ROOT), target, f"AMBOX_RUN_ARGS={run_args}"]
+    )
+
+
+def assert_storage_mounts() -> None:
+    result = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            "{{json .Mounts}}",
+            CONTAINER_NAME,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    mounts = json.loads(result.stdout)
+    mounted_targets = {mount["Destination"] for mount in mounts}
+    missing = STORAGE_MOUNT_TARGETS - mounted_targets
+    if missing:
+        raise RuntimeError(f"Missing storage test mounts: {sorted(missing)}")
 
 
 def wait_for_dashboard(process: subprocess.Popen[bytes], url: str) -> None:
@@ -80,6 +116,22 @@ def wait_for_dashboard(process: subprocess.Popen[bytes], url: str) -> None:
             last_error = f"HTTP {status}"
         time.sleep(5)
     raise RuntimeError(f"Timed out waiting for {url}: {last_error}")
+
+
+def wait_for_sftp(process: subprocess.Popen[bytes], port: int) -> None:
+    deadline = time.monotonic() + 60
+    last_error = "SFTP did not accept connections"
+    while time.monotonic() < deadline:
+        return_code = process.poll()
+        if return_code is not None:
+            raise RuntimeError(f"ambox exited before readiness (status {return_code})")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=5):
+                return
+        except OSError as error:
+            last_error = str(error)
+        time.sleep(1)
+    raise RuntimeError(f"Timed out waiting for SFTP port {port}: {last_error}")
 
 
 def capture_failure_artifacts(services: Services, output_root: Path) -> None:

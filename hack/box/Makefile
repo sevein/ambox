@@ -2,6 +2,12 @@
 
 IMAGE ?= artefactual/ambox
 TAG ?= test
+AMBOX_RUN_ARGS ?=
+AMBOX_DASHBOARD_PORT ?= 64080
+AMBOX_STORAGE_PORT ?= 64081
+AMBOX_SFTP_PORT ?= 64022
+AMBOX_DASHBOARD_URL ?= http://127.0.0.1:$(AMBOX_DASHBOARD_PORT)
+AMBOX_STORAGE_URL ?= http://127.0.0.1:$(AMBOX_STORAGE_PORT)
 
 # Local seed-cache image repo used by `make build` / `make run` in development.
 SEED_CACHE_IMAGE ?= ambox-build-cache-local
@@ -39,22 +45,27 @@ run: build
 
 run-image:
 	docker run --name=ambox-test --rm \
-		-p64080:64080 -p64081:64081 -p64022:64022 \
+		-p$(AMBOX_DASHBOARD_PORT):64080 \
+		-p$(AMBOX_STORAGE_PORT):64081 \
+		-p$(AMBOX_SFTP_PORT):64022 \
 		-v $(CURDIR)/test/ambox.yaml:/etc/ambox/config.yaml:ro \
 		-v $(CURDIR)/test/ssh_host_ed25519_key:/etc/ambox/sftpgo_host_key:ro \
-		$(IMAGE):$(TAG)
+		$(AMBOX_RUN_ARGS) $(IMAGE):$(TAG)
 
 verify:
 	uv run --project $(CURDIR)/e2e --locked \
 		playwright install chromium
-	uv run --project $(CURDIR)/e2e --locked \
+	AMBOX_DASHBOARD_URL="$(AMBOX_DASHBOARD_URL)" \
+	AMBOX_STORAGE_URL="$(AMBOX_STORAGE_URL)" \
+	AMBOX_SFTP_PORT="$(AMBOX_SFTP_PORT)" \
+		uv run --project $(CURDIR)/e2e --locked \
 		pytest -c $(CURDIR)/e2e/pyproject.toml \
 		--output=$(CURDIR)/e2e/output/playwright \
 		$(CURDIR)/e2e
 
 sftp-publickey:
 	sftp \
-		-P 64022 \
+		-P $(AMBOX_SFTP_PORT) \
 		-o StrictHostKeyChecking=yes \
 		-o UserKnownHostsFile=$(CURDIR)/test/known_hosts \
 		-i $(CURDIR)/test/ssh_user_ed25519_key \
@@ -62,7 +73,7 @@ sftp-publickey:
 
 sftp-password:
 	sftp \
-		-P 64022 \
+		-P $(AMBOX_SFTP_PORT) \
 		-o StrictHostKeyChecking=yes \
 		-o UserKnownHostsFile=$(CURDIR)/test/known_hosts \
 		archivematica@localhost

@@ -91,6 +91,7 @@ class Services:
     dashboard: API
     storage: API
     dashboard_url: str
+    sftp_port: int
     dashboard_user: str
     dashboard_password: str
     container_name: str
