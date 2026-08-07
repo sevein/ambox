@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import base64
 import os
+import shutil
 import subprocess
+import tempfile
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,6 +19,19 @@ from state import Verification
 
 TERMINAL_FAILURES = {"FAILED", "REJECTED", "USER_INPUT"}
 VIRUS_SCAN_LINK_ID = "1c2550f1-3fc0-45d8-8bc4-4c06d720283b"
+AIP_STORE_ROOT = Path("/var/archivematica/sharedDirectory/www/AIPsStore")
+DIP_STORE_ROOT = Path("/var/archivematica/sharedDirectory/www/DIPsStore")
+BOX_ROOT = Path(__file__).resolve().parents[2]
+SAMPLE_TRANSFER = (
+    BOX_ROOT.parent
+    / "submodules"
+    / "archivematica-sampledata"
+    / "SampleTransfers"
+    / "Images"
+    / "pictures"
+)
+SFTP_PRIVATE_KEY = BOX_ROOT / "test" / "ssh_user_ed25519_key"
+SFTP_KNOWN_HOSTS = BOX_ROOT / "test" / "known_hosts"
 
 
 def require_uuid(value: Any, label: str) -> str:
@@ -95,6 +111,53 @@ def get_jobs(ambox: Services, unit_uuid: str, label: str) -> list[dict[str, Any]
     return body
 
 
+def related_dip(ambox: Services, aip: dict[str, Any]) -> dict[str, Any] | None:
+    related_packages = aip.get("related_packages")
+    assert isinstance(related_packages, list), aip
+
+    for resource_uri in related_packages:
+        assert isinstance(resource_uri, str), aip
+        status, package = ambox.storage.request(resource_uri)
+        assert status == 200, package
+        assert isinstance(package, dict), package
+        if package.get("package_type") == "DIP":
+            return package
+    return None
+
+
+def assert_package_readable(
+    ambox: Services,
+    package: dict[str, Any],
+    package_type: str,
+    store_root: Path,
+) -> None:
+    assert package.get("package_type") == package_type, package
+    assert package.get("status") == "UPLOADED", package
+    current_full_path = package.get("current_full_path")
+    assert isinstance(current_full_path, str), package
+    package_path = Path(current_full_path)
+    assert package_path.is_relative_to(store_root), package
+
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            ambox.container_name,
+            "/command/s6-setuidgid",
+            "archivematica",
+            "/usr/bin/test",
+            "-r",
+            current_full_path,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"Stored {package_type} is not readable at {current_full_path}: {result.stderr}"
+    )
+
+
 @given("ambox is running")
 def ambox_is_running(ambox: Services) -> None:
     assert ambox
@@ -141,14 +204,50 @@ print(s.recv(4096).decode(), end="")
     pytest.fail(f"Timed out waiting for clamd VERSION: {last_error}")
 
 
-@when("the bundled pictures are submitted with automated processing")
+def upload_transfer_via_sftp(ambox: Services, transfer_name: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="ambox-e2e-sftp-") as temp_dir:
+        private_key = Path(temp_dir) / "id_ed25519"
+        shutil.copyfile(SFTP_PRIVATE_KEY, private_key)
+        private_key.chmod(0o600)
+        result = subprocess.run(
+            [
+                "sftp",
+                "-b",
+                "-",
+                "-P",
+                str(ambox.sftp_port),
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "IdentitiesOnly=yes",
+                "-o",
+                "StrictHostKeyChecking=yes",
+                "-o",
+                f"UserKnownHostsFile={SFTP_KNOWN_HOSTS}",
+                "-i",
+                str(private_key),
+                "archivematica@localhost",
+            ],
+            input=f'put -r "{SAMPLE_TRANSFER}" "{transfer_name}"\n',
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    assert result.returncode == 0, result.stderr
+
+
+@when(
+    "the bundled pictures are uploaded through SFTP and submitted with "
+    "automated processing"
+)
 def submit_pictures(ambox: Services, verification: Verification) -> None:
-    transfer_path = os.getenv(
-        "AMBOX_TRANSFER_PATH",
-        "/home/archivematica/sampledata/Images/pictures",
-    )
-    encoded_path = base64.b64encode(transfer_path.encode()).decode()
     verification.transfer_name = f"ambox-e2e-{int(time.time())}-{os.getpid()}"
+    transfer_path = os.getenv("AMBOX_TRANSFER_PATH")
+    if transfer_path is None:
+        transfer_path = f"/home/archivematica/transfers/{verification.transfer_name}"
+        upload_transfer_via_sftp(ambox, verification.transfer_name)
+
+    encoded_path = base64.b64encode(transfer_path.encode()).decode()
     payload = {
         "name": verification.transfer_name,
         "type": "standard",
@@ -224,8 +323,8 @@ def ingest_jobs_exist(ambox: Services, verification: Verification) -> None:
     get_jobs(ambox, verification.sip_uuid, "ingest")
 
 
-@then("the AIP is uploaded to Storage Service")
-def aip_is_uploaded(ambox: Services, verification: Verification) -> None:
+@then("the AIP and DIP are uploaded to Storage Service")
+def aip_and_dip_are_uploaded(ambox: Services, verification: Verification) -> None:
     timeout = float(os.getenv("AMBOX_E2E_TIMEOUT", "600"))
     interval = float(os.getenv("AMBOX_E2E_POLL_INTERVAL", "2"))
     deadline = time.monotonic() + timeout
@@ -238,13 +337,24 @@ def aip_is_uploaded(ambox: Services, verification: Verification) -> None:
             assert body.get("package_type") == "AIP", body
             if body.get("status") == "UPLOADED":
                 assert require_uuid(body.get("uuid"), "AIP") == verification.sip_uuid
+                dip = related_dip(ambox, body)
+                if dip is None or dip.get("status") != "UPLOADED":
+                    time.sleep(interval)
+                    continue
+
+                assert_package_readable(ambox, body, "AIP", AIP_STORE_ROOT)
+                assert_package_readable(ambox, dip, "DIP", DIP_STORE_ROOT)
                 print(
                     f"aip_uuid={body['uuid']} aip_status={body['status']} "
                     f"aip_size={body.get('size')}"
+                )
+                print(
+                    f"dip_uuid={dip['uuid']} dip_status={dip['status']} "
+                    f"dip_size={dip.get('size')}"
                 )
                 return
         else:
             assert status in {400, 404}, body
         time.sleep(interval)
 
-    pytest.fail(f"Timed out waiting for uploaded AIP {verification.sip_uuid}")
+    pytest.fail(f"Timed out waiting for uploaded AIP and DIP {verification.sip_uuid}")

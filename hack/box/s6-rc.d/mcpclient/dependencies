@@ -2,3 +2,4 @@ mysql-init
 gearmand
 ss-gunicorn
 clamd
+storage-access

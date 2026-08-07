@@ -6,7 +6,7 @@ processing:
     - name: automated
       extends: automated
       config:
-        normalize: do_not_normalize
+        normalize: access
     - name: demo
       extends: default
       config:

@@ -270,6 +270,10 @@ RUN set -ex \
 		/var/archivematica/storage_service/.gnupg \
 		/var/archivematica/.cache/uv \
 		/var/lib/sftpgo \
+	&& install -d -o archivematica -g archivematica -m 0770 \
+		/var/archivematica/sharedDirectory/www \
+		/var/archivematica/sharedDirectory/www/AIPsStore \
+		/var/archivematica/sharedDirectory/www/DIPsStore \
 	&& chown -R archivematica:archivematica \
 		/var/archivematica \
 		/var/lib/sftpgo
@@ -292,6 +296,7 @@ COPY hack/box/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY hack/box/envs/ /etc/ambox/envs/
 COPY hack/box/config/ambox.yaml /etc/ambox/config.yaml
 COPY --link \
+	hack/box/scripts/check-storage-access.sh \
 	hack/box/scripts/wait-file.sh \
 	hack/box/scripts/wait-http.sh \
 	hack/box/scripts/wait-mysql.sh \

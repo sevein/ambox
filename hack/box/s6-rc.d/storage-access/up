@@ -1,0 +1,4 @@
+#!/command/execlineb -P
+
+s6-setuidgid archivematica
+/usr/local/bin/check-storage-access.sh
