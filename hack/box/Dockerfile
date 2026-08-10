@@ -319,20 +319,6 @@ FROM runtime-base AS source
 # Copy the application source code.
 COPY --chown=${USER_ID}:${GROUP_ID} --link . /src
 
-# Seed common sample transfers into the default transfer source location.
-RUN set -ex \
-	&& install -d -o archivematica -g archivematica -m 0755 /home/archivematica/sampledata \
-	&& install -d -o archivematica -g archivematica -m 0755 /home/archivematica/transfers \
-	&& if [ -d /src/hack/submodules/archivematica-sampledata/SampleTransfers ]; then \
-		cp -a \
-			/src/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV \
-			/src/hack/submodules/archivematica-sampledata/SampleTransfers/Images \
-			/home/archivematica/sampledata/; \
-	else \
-		echo "Sampledata submodule not present; skipping seed sample transfers."; \
-	fi \
-	&& chown -R archivematica:archivematica /home/archivematica/sampledata /home/archivematica/transfers
-
 # Dashboard build-time preparation.
 USER root
 RUN set -ex \
@@ -404,6 +390,19 @@ RUN /usr/local/bin/seed.sh
 FROM source AS runtime
 
 ARG AM_SEED_CACHE_IMAGE
+
+# Seed common sample transfers into the default transfer source location.
+RUN set -ex \
+	&& install -d -o archivematica -g archivematica -m 0755 \
+		/home/archivematica/sampledata \
+		/home/archivematica/transfers \
+	&& cp -a \
+		/src/hack/submodules/archivematica-sampledata/SampleTransfers/DemoTransferCSV \
+		/src/hack/submodules/archivematica-sampledata/SampleTransfers/Images \
+		/home/archivematica/sampledata/ \
+	&& chown -R archivematica:archivematica \
+		/home/archivematica/sampledata \
+		/home/archivematica/transfers
 
 # Enforce that a real seed cache image is provided at build time.
 # "seedcache-empty" is just a placeholder to avoid Dockerfile parser errors.

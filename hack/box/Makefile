@@ -24,7 +24,13 @@ AM_SEED_CACHE_IMAGE ?= $(SEED_CACHE_IMAGE):seed-$(AM_SEED_KEY)
 # Sentinel value that identifies the local-dev default repo for auto-seed setup.
 SEED_CACHE_IMAGE_LOCAL_DEFAULT ?= ambox-build-cache-local
 
-build:
+sampledata-image:
+	./scripts/provision-sampledata.sh image
+
+sampledata-e2e:
+	./scripts/provision-sampledata.sh e2e
+
+build: sampledata-image
 	# In local dev, ensure the local seed-cache tag exists before `docker build`.
 	# `seed-cache-local` reuses a matching remote seed when available and only
 	# builds the seed locally if needed. Skip this when the caller explicitly
@@ -52,7 +58,7 @@ run-image:
 		-v $(CURDIR)/test/ssh_host_ed25519_key:/etc/ambox/sftpgo_host_key:ro \
 		$(AMBOX_RUN_ARGS) $(IMAGE):$(TAG)
 
-verify:
+verify: sampledata-e2e
 	uv run --project $(CURDIR)/e2e --locked \
 		playwright install chromium
 	AMBOX_DASHBOARD_URL="$(AMBOX_DASHBOARD_URL)" \
