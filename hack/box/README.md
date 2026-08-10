@@ -161,6 +161,13 @@ A mount replacing all of `/home` must provide an accessible
 `/home/archivematica/transfers` when the SFTP upload directory is the only part
 of the transfer source that needs to be mounted.
 
+> [!WARNING]
+> A bind or NFS mount replacing all of `/home` hides the sample transfers
+> bundled under `/home/archivematica/sampledata`. A fresh Docker-managed volume
+> mounted at `/home` receives those files when it is first created, but an
+> existing volume is not refreshed when the image changes. Mount only
+> `/home/archivematica/transfers` to keep the bundled samples available.
+
 ### Mount Docker-managed volumes
 
 Docker-managed volumes are the simplest way to keep material for transfer and
@@ -323,6 +330,11 @@ Build a local seed cache image, then build and run the image locally:
 
     make seed-cache-local
     make run
+
+`make build` provisions the `DemoTransferCSV` and `Images` sample transfers
+from the sampledata revision pinned by this repository. It uses a filtered,
+sparse checkout when the submodule is not already initialized. `make verify`
+uses the same provisioner but requests only the `Images/pictures` directory.
 
 The local `Makefile` defaults to `SEED_CACHE_IMAGE=ambox-build-cache-local`, so
 `make seed-cache-local`, `make build`, and `make run` use the same seed cache
