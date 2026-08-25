@@ -42,7 +42,7 @@ jobs:
           SEED_CACHE_IMAGE_REMOTE: ghcr.io/${{ github.repository_owner }}/ambox-build-cache
         run: make -C hack/box build
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
           cache-python: true
@@ -98,7 +98,7 @@ jobs:
           fi
           echo "IMAGE_DIGEST=sha256:$digest" >> "$GITHUB_ENV"
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -110,7 +110,7 @@ jobs:
           docker pull "$CANDIDATE_IMAGE@$IMAGE_DIGEST"
           docker tag "$CANDIDATE_IMAGE@$IMAGE_DIGEST" artefactual/ambox:test
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
           cache-python: true
