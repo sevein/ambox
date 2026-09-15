@@ -42,7 +42,7 @@ jobs:
           SEED_CACHE_IMAGE_REMOTE: ghcr.io/${{ github.repository_owner }}/ambox-build-cache
         run: make -C hack/box build
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
           cache-python: true
@@ -110,7 +110,7 @@ jobs:
           docker pull "$CANDIDATE_IMAGE@$IMAGE_DIGEST"
           docker tag "$CANDIDATE_IMAGE@$IMAGE_DIGEST" artefactual/ambox:test
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
           cache-python: true
