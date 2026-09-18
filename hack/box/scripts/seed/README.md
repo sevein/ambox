@@ -2,7 +2,7 @@
 
 This directory contains the tooling to build and consume pre-seeded MySQL dumps
 for the ambox image. The dumps are stored as an OCI artifact in GHCR and keyed
-by a deterministic hash derived from migration directories and the seed script.
+by a deterministic hash derived from migration directories, the seed script, and the ambox Dockerfile.
 
 ## Components
 
@@ -10,7 +10,8 @@ by a deterministic hash derived from migration directories and the seed script.
   `/docker-seed/mcp.sql.gz` and `/docker-seed/ss.sql.gz`). It exits early if the
   dumps already exist.
 - `key.sh`: computes the seed cache key from the latest git commits touching
-  migrations plus `seed.sh`.
+  migrations plus `seed.sh` and `hack/box/Dockerfile`. Dockerfile changes invalidate
+  the cache when the database or build environment changes.
 - `publish-cache.sh`: builds `seed-builder`, extracts the dumps, and publishes
   the seed cache OCI artifact to GHCR for the current key (or loads it locally
   when `SEED_CACHE_PUSH=0`).

@@ -19,7 +19,8 @@ The local `Makefile` defaults to `SEED_CACHE_IMAGE=ambox-build-cache-local`, so
 `make seed-cache-local`, `make build`, and `make run` use the same seed cache
 repo automatically. `make seed-cache-local` first tries to reuse a matching
 remote seed cache tag and falls back to building the seed locally if none
-exists. Re-run it after migration changes.
+exists. Re-run it after migration, seed script, or Dockerfile changes. The cache
+key includes all three so database build environment changes get fresh dumps.
 
 The bundled `hack/box/Makefile` mounts `test/ambox.yaml` and the SFTP test
 keys under `test/` to simplify local development. Adjust those mounts if you
@@ -158,19 +159,25 @@ flowchart TB
 
 ## Dockerfile build stages
 
+The build follows upstream Ubuntu, uv (including its image digest), Node, and
+MediaArea defaults. Each Python environment uses its project `.python-version`;
+`PYTHON_VERSION` is an optional build argument override. Both frontend builds
+use upstream npm configuration before installing locked dependencies.
+
 The `Dockerfile` uses a multi-stage build to construct the final runtime image.
 
 | Stage | Depends on | Purpose |
 | --- | --- | --- |
 | `uv` | `ghcr.io/astral-sh/uv` | Provides uv binaries for Python management |
-| `base` | `ubuntu:noble` | Foundation with locale setup and the `archivematica` user |
+| `base` | `ubuntu:26.04` | Foundation with locale setup and the `archivematica` user |
 | `python-builder` | `base`, `uv` | Builds Python virtual environments for Archivematica and Storage Service |
 | `frontend-builder` | `node:24` | Compiles Dashboard frontend assets |
+| `storage-frontend-builder` | `node:24` | Compiles Storage Service frontend assets |
 | `seedcache-empty` | `scratch` | Empty placeholder stage for development and testing |
 | `seedcache` | `${AM_SEED_CACHE_IMAGE}` | Provides SQL database dumps from an external artifact |
 | `runtime-base` | `base`, `uv`, `python-builder` | Runtime system packages and Python virtual environments |
-| `source` | `runtime-base`, `frontend-builder` | Adds source code and compiled frontend assets |
-| `assets` | `runtime-base`, `frontend-builder` | Generates Django static assets and translations |
+| `source` | `runtime-base`, `frontend-builder`, `storage-frontend-builder` | Adds source code and compiled frontend assets |
+| `assets` | `runtime-base`, `frontend-builder`, `storage-frontend-builder` | Generates Django static assets and translations |
 | `seed-builder` | `source` | Generates seed dumps for CI |
 | `runtime` | `source`, `seedcache`, `assets` | Final distributable image |
 
@@ -178,7 +185,7 @@ The `Dockerfile` uses a multi-stage build to construct the final runtime image.
 flowchart TB
   subgraph External[External images]
     uv_ext["ghcr.io/astral-sh/uv"]
-    ubuntu["ubuntu:noble"]
+    ubuntu["ubuntu:26.04"]
     node24["node:24"]
     scratch["scratch"]
     seed_arg["${AM_SEED_CACHE_IMAGE}<br/>(build argument)"]
@@ -189,6 +196,7 @@ flowchart TB
     base["base<br/><small>Ubuntu foundation + archivematica user</small>"]
     python_builder["python-builder<br/><small>Python virtual environments</small>"]
     frontend_builder["frontend-builder<br/><small>Dashboard frontend</small>"]
+    storage_frontend_builder["storage-frontend-builder<br/><small>Storage Service frontend</small>"]
     seedcache_empty["seedcache-empty<br/><small>Empty placeholder</small>"]
     seedcache["seedcache<br/><small>SQL dumps from artifact</small>"]
     runtime_base["runtime-base<br/><small>System packages + Python virtual environments</small>"]
@@ -201,6 +209,7 @@ flowchart TB
   uv_ext --> uv
   ubuntu --> base
   node24 --> frontend_builder
+  node24 --> storage_frontend_builder
   scratch --> seedcache_empty
   seed_arg --> seedcache
 
@@ -211,8 +220,10 @@ flowchart TB
   uv --> runtime_base
   runtime_base --> source
   frontend_builder --> source
+  storage_frontend_builder --> source
   runtime_base --> assets
   frontend_builder --> assets
+  storage_frontend_builder --> assets
   source --> seed_builder
   source --> runtime
   seedcache --> runtime

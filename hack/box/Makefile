@@ -15,7 +15,7 @@ SEED_CACHE_IMAGE ?= ambox-build-cache-local
 # Remote seed-cache image repo used by `make seed-cache` and local remote reuse.
 SEED_CACHE_IMAGE_REMOTE ?= ghcr.io/sevein/ambox-build-cache
 
-# Seed cache key derived from migration history + seed script changes.
+# Seed cache key derived from migration history + seed script and Dockerfile changes.
 AM_SEED_KEY ?= $(shell ./scripts/seed/key.sh)
 
 # Fully qualified seed-cache image reference consumed by Dockerfile.

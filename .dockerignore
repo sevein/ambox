@@ -45,3 +45,4 @@
 **/.mypy_cache
 **/.ruff_cache
 src/archivematica/dashboard/frontend/dist
+hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/dist

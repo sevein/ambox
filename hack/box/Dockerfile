@@ -1,13 +1,14 @@
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-ARG UBUNTU_VERSION=noble-20251013
+ARG UBUNTU_VERSION=26.04
 ARG S6_OVERLAY_VERSION=3.2.1.0
-ARG PYTHON_VERSION=3.10.19
-ARG UV_VERSION=0.11.30
-ARG NODE24_VERSION=24.12.0
+ARG PYTHON_VERSION
+ARG UV_VERSION=0.12.13
+ARG UV_DIGEST=sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6
+ARG NODE_VERSION=24
 ARG SFTPGO_VERSION=2.7.0
-ARG MEDIAAREA_VERSION=1.0-25
+ARG MEDIAAREA_VERSION=1.0-27
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
 # ambox images include precomputed SQL database dumps (for both Archivematica
@@ -23,7 +24,7 @@ ARG AM_SEED_CACHE_IMAGE=seedcache-empty
 # uv provides the uv and uvx binaries.
 #
 # -----------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ghcr.io/astral-sh/uv:${UV_VERSION}@${UV_DIGEST} AS uv
 
 # base provides our custom ubuntu distro.
 #
@@ -106,15 +107,12 @@ ENV UV_PYTHON_INSTALL_DIR=/python \
 
 USER archivematica
 
-RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=${USER_ID},gid=${GROUP_ID} \
-    uv python install ${PYTHON_VERSION}
-
 COPY --link .python-version pyproject.toml uv.lock /dependencies/archivematica/
 RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=${USER_ID},gid=${GROUP_ID} \
     set -ex \
 	&& cd /dependencies/archivematica \
 	&& UV_PROJECT_ENVIRONMENT=/venv \
-		uv sync --locked --no-dev --no-install-project --python ${PYTHON_VERSION}
+		uv sync --locked --no-dev --no-install-project ${PYTHON_VERSION:+--python "$PYTHON_VERSION"}
 
 COPY --link \
 	hack/submodules/archivematica-storage-service/.python-version \
@@ -125,18 +123,33 @@ RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=$
     set -ex \
 	&& cd /dependencies/storage-service \
 	&& UV_PROJECT_ENVIRONMENT=/venv-ss \
-		uv sync --locked --no-dev --no-install-project --python ${PYTHON_VERSION}
+		uv sync --locked --no-dev --no-install-project ${PYTHON_VERSION:+--python "$PYTHON_VERSION"}
 
 # frontend-builder provides the dashboard frontend assets.
 #
 # -----------------------------------------------------------------------------
-FROM node:${NODE24_VERSION} AS frontend-builder
+FROM node:${NODE_VERSION} AS frontend-builder
 WORKDIR /src/src/archivematica/dashboard/frontend
+COPY --link src/archivematica/dashboard/frontend/.npmrc /src/src/archivematica/dashboard/frontend/.npmrc
 COPY --link src/archivematica/dashboard/frontend/package.json /src/src/archivematica/dashboard/frontend/package.json
 COPY --link src/archivematica/dashboard/frontend/package-lock.json /src/src/archivematica/dashboard/frontend/package-lock.json
-RUN npm clean-install
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm clean-install
 COPY --link src/archivematica/dashboard/frontend /src/src/archivematica/dashboard/frontend
 COPY --link src/archivematica/dashboard/media/images /src/src/archivematica/dashboard/media/images
+RUN npm run build
+
+# storage-frontend-builder provides the Storage Service frontend assets.
+#
+# -----------------------------------------------------------------------------
+FROM node:${NODE_VERSION} AS storage-frontend-builder
+WORKDIR /src/src/archivematica/storage_service/frontend
+COPY --link hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/.npmrc ./
+COPY --link hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/package.json ./
+COPY --link hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm pkg delete scripts.prepare && npm clean-install
+COPY --link hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend ./
 RUN npm run build
 
 # seedcache-empty is a placeholder stage that provides an empty seed cache.
@@ -201,13 +214,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		libimage-exiftool-perl \
 		libffi8 \
 		libldap2 \
-		libmysqlclient21 \
+		libmysqlclient24 \
 		libsasl2-2 \
 		libssl3t64 \
-		libxml2 \
+		libxml2-16 \
 		libxslt1.1 \
 		logapp \
-		md5deep \
 		mediaconch \
 		mediainfo \
 		media-types \
@@ -216,7 +228,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 		nginx \
 		nfs-common \
 		openjdk-8-jre-headless \
-		p7zip-full \
+		7zip \
 		pbzip2 \
 		pst-utils \
 		python3-lxml \
@@ -330,6 +342,7 @@ RUN set -ex \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
 COPY --from=frontend-builder --link /src/src/archivematica/dashboard/frontend/dist /src/src/archivematica/dashboard/frontend/dist
+COPY --chown=${USER_ID}:${GROUP_ID} --from=storage-frontend-builder --link /src/src/archivematica/storage_service/frontend/dist /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/dist
 
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src
@@ -352,6 +365,7 @@ RUN set -ex \
 	&& mkdir -p $internalDirs \
 	&& chown -R archivematica:archivematica $internalDirs
 COPY --from=frontend-builder --link /src/src/archivematica/dashboard/frontend/dist /src/src/archivematica/dashboard/frontend/dist
+COPY --chown=${USER_ID}:${GROUP_ID} --from=storage-frontend-builder --link /src/src/archivematica/storage_service/frontend/dist /src/hack/submodules/archivematica-storage-service/src/archivematica/storage_service/frontend/dist
 
 ENV PATH="/venv/bin:$PATH"
 ENV PYTHONPATH=/src/src

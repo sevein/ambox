@@ -11,6 +11,7 @@ src/archivematica/dashboard/components/administration/migrations
 src/archivematica/dashboard/main/migrations
 src/archivematica/dashboard/fpr/migrations
 hack/box/scripts/seed/seed.sh
+hack/box/Dockerfile
 "
 
 ss_paths="
