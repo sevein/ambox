@@ -37,7 +37,8 @@ and ingest results in Dashboard.
 `AMBOX_SKIP_BUILD=1` to verify an existing `IMAGE:TAG`. On CI failures, browser
 traces and screenshots, recent API responses, and container logs are uploaded
 as artifacts. Pull requests run this end-to-end test in CI. Releases test the
-amd64 candidate digest before publishing the version and `latest` manifests.
+amd64 candidate digest before publishing version manifests. Stable releases
+also update `latest`; prereleases leave it unchanged.
 
 The release workflow defaults to a notes-only preview. It uses Copilot to
 summarize the upstream Archivematica and ambox commit ranges, falling back to
@@ -58,7 +59,21 @@ After reviewing a preview, run the workflow with publishing enabled to build
 and test the images, publish the manifests, push the tag, and create the
 GitHub Release:
 
-    gh workflow run release.yml -f version=1.0.14 -f publish=true
+    gh workflow run release.yml --ref dev/ambox -f version=1.2.0 -f publish=true
+
+A version with a SemVer prerelease suffix, such as `1.2.0-rc.1`, publishes only
+its versioned image manifests and is marked as a GitHub prerelease. It does
+not move `latest` in either registry. The workflow derives this automatically
+from the version; no separate prerelease flag is needed. Keep changes to this
+publication policy in a separate commit from upstream synchronization.
+
+For a release candidate, preview its automatically generated notes first:
+
+    gh workflow run release.yml --ref dev/ambox -f version=1.2.0-rc.1
+
+After review, publishing is a separate, explicitly authorized action:
+
+    gh workflow run release.yml --ref dev/ambox -f version=1.2.0-rc.1 -f publish=true
 
 ## Upstream synchronization
 

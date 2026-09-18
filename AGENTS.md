@@ -92,9 +92,13 @@ Releases are driven by the GitHub Actions workflow
   optional `target` affects only notes previews and is rejected for publishing.
 - Pull requests build and verify an amd64 image end to end.
 - Runs with `publish=true` build multi-arch candidates (amd64/arm64) with
-  buildx, test the amd64 digest, push `<version>` and `latest` manifests to
-  Docker Hub `artefactual/ambox` and GHCR `ghcr.io/<repo_owner>/ambox`, and
-  publish a GitHub Release and repository tag.
+  buildx, test the amd64 digest, push `<version>` manifests to Docker Hub
+  `artefactual/ambox` and GHCR `ghcr.io/<repo_owner>/ambox`, and publish a GitHub
+  Release and repository tag. Stable versions also update `latest` in both
+  registries. Versions with a SemVer prerelease suffix (such as `-rc.1`) leave
+  `latest` unchanged and are marked as GitHub prereleases.
+- Keep prerelease publication changes in a separate commit from upstream sync
+  and image build changes.
 
 If you change release behavior, update the workflow and any docs that mention
 the process.
