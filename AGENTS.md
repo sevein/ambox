@@ -15,11 +15,13 @@ explicitly needs core Archivematica code.
 ## Key paths
 
 - `hack/box/README.md`: user-facing quick start and operational notes.
+- `hack/box/CONTRIBUTING.md`: development, synchronization, releases, and
+  service graphs.
 - `hack/box/Dockerfile`: image build.
 - `hack/box/Makefile`: build/run helpers.
 - `hack/box/scripts/`: build helpers, including seed-cache tooling.
 - `hack/box/s6-rc.d/`: service supervision graph.
-- `.github/workflows/test.yml`: image build and smoke tests.
+- `.github/workflows/test.yml`: image build and end-to-end verification.
 - `.github/workflows/release.yml`: release pipeline.
 
 ## Common commands (local)
@@ -49,13 +51,24 @@ Ports exposed by the container:
 Upstream is `https://github.com/artefactual/archivematica.git`, branch
 `qa/1.x`.
 
-1. Start a sync branch from an updated `origin/dev/ambox` and fetch upstream.
+1. Start a new sync branch from an updated `origin/dev/ambox` and fetch upstream
+   and the requested release tags. Verify tag SHAs directly; RC tags may exist
+   without a GitHub Release record. Record any commits between the release tag
+   and the QA branch head.
 2. Merge `upstream/qa/1.x` with `--no-ff` and the subject
    `Merge Archivematica qa/1.x`.
 3. Preserve ambox-specific CI and release behavior, adapt `hack/box/` to
-   upstream build changes, and do not edit generated code.
-4. Open a PR targeting `dev/ambox`; record the upstream SHA and conflict
-   decisions.
+   upstream build changes, and do not edit generated code. Follow the upstream
+   Ubuntu, uv, Node, Python, and frontend build conventions where possible.
+   Check the Storage Service submodule pin against its intended release tag;
+   initialize the pinned revision rather than following its moving branch.
+   Keep upstream-only publishing and authentication CI disabled in this fork,
+   including replacement workflows introduced under new filenames.
+   Review seed compatibility; Dockerfile changes invalidate the seed cache.
+4. Record the upstream SHA, component release tags, and conflict decisions in
+   the merge commit. When explicitly authorized to publish, open a PR targeting
+   `dev/ambox`. A local-only request stops at local commits, without pushing,
+   opening a PR, dispatching workflows, or publishing cache images.
 5. Use PR CI as the validation gate. Add or update checks when coverage is
    missing; do not merge until review and all checks pass.
 6. Merge the PR with a merge commit; never squash or rebase.
@@ -67,9 +80,17 @@ Releases are driven by the GitHub Actions workflow
 
 - Workflow inputs: semantic version string (e.g. `1.2.3` or `1.2.3-rc.1`),
   optional historical target ref, and a `publish` flag that defaults to false.
-- The default run previews Copilot-assisted release notes without building or
-  publishing images, tags, or a GitHub Release.
-- Pull requests build and smoke-test an amd64 image.
+- Release notes are generated automatically by the workflow. Both preview and
+  publish runs prepare upstream Archivematica and fork commit ranges, request
+  a Copilot summary, and fall back to deterministic commit lists. Do not write
+  a separate release-notes file as a routine synchronization step.
+- The default run previews those notes in the job summary and an artifact,
+  without building or publishing images, tags, or a GitHub Release. Review the
+  generated notes for component versions and compatibility changes; the
+  generator does not expand Storage Service submodule commit history.
+- Dispatch the workflow from the intended release branch or commit. The
+  optional `target` affects only notes previews and is rejected for publishing.
+- Pull requests build and verify an amd64 image end to end.
 - Runs with `publish=true` build multi-arch candidates (amd64/arm64) with
   buildx, test the amd64 digest, push `<version>` and `latest` manifests to
   Docker Hub `artefactual/ambox` and GHCR `ghcr.io/<repo_owner>/ambox`, and
@@ -82,7 +103,7 @@ the process.
 
 - Keep diffs minimal and scoped to `hack/box/` unless necessary.
 - When changing service dependencies, update both the s6 definitions and any
-  relevant docs/graphs in `hack/box/README.md`.
+  relevant docs/graphs in `hack/box/CONTRIBUTING.md`.
 - When changing configuration schema, update both `config/ambox.yaml` and
   `config/schema.json`.
 - Prefer using existing scripts in `hack/box/scripts/` rather than re-creating

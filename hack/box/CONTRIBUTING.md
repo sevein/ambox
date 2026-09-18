@@ -60,6 +60,43 @@ GitHub Release:
 
     gh workflow run release.yml -f version=1.0.14 -f publish=true
 
+## Upstream synchronization
+
+Start a fresh sync branch from updated `origin/dev/ambox`, fetch upstream
+`qa/1.x` and the relevant release tags, and compare their SHAs. A release
+candidate tag may exist without a GitHub Release page. If QA has moved beyond
+the requested tag, record the additional changes in the merge commit.
+
+Merge with `--no-ff` and the subject `Merge Archivematica qa/1.x`. Record the
+upstream SHA, Archivematica and Storage Service tag SHAs, and conflict decisions
+in the body. Initialize Storage Service at the merged submodule revision and
+verify that it matches the intended release; do not update it to an unrelated
+branch tip.
+
+Preserve ambox image verification, release workflows, and the fork's dependency
+update scope. Keep upstream image publishing and authentication integration CI
+disabled, including workflows that upstream renames or replaces. Adapt the
+single-container Dockerfile to upstream build conventions, including both
+frontend builds, while preserving s6 supervision and ambox configuration.
+Check package availability when updating Ubuntu and review seed compatibility.
+Dockerfile changes select a fresh seed key; `make seed-cache-local` builds it
+locally without publishing it. Service graph changes belong in this guide.
+
+Use the existing `make verify` scenario and PR CI as the integration gate.
+Record any deferred manual verification in the handoff. Once publication is
+explicitly authorized, open a PR against `dev/ambox`; merge it only after review
+and passing checks, using a merge commit, never squash or rebase. Local-only
+work stops at local commits: no push, PR creation, workflow dispatch, or cache
+publication.
+
+Release notes are generated automatically, including during publication; no
+handwritten release-notes file is required for a sync. Review the generated
+preview for the intended versions and compatibility changes. Its inputs cover
+Archivematica and fork commit ranges, but do not expand Storage Service's
+submodule history. A preview is not an image build or a runtime check. Dispatch
+from the intended release ref using `--ref`; `target` only changes the notes
+preview and cannot select a different commit for publishing.
+
 ## Runtime service dependencies
 
 ambox uses [s6-overlay] to supervise Archivematica services in one container.
