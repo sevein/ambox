@@ -115,14 +115,19 @@ class MCPClient:
         elif "user_id" not in data:
             data["user_id"] = self.user.id
         client = GearmanClient([self.server])
-        response = client.submit_job(
-            ability.encode(),
-            data,
-            background=False,
-            wait_until_complete=True,
-            poll_timeout=timeout,
-        )
-        client.shutdown()
+        try:
+            try:
+                response = client.submit_job(
+                    ability.encode(),
+                    data,
+                    background=False,
+                    wait_until_complete=True,
+                    poll_timeout=timeout,
+                )
+            except gearman.errors.GearmanError as err:
+                raise RPCError(f"{ability} failed (check the logs)") from err
+        finally:
+            client.shutdown()
         if response.state == gearman.JOB_CREATED:
             raise TimeoutError(timeout)
         elif response.state != gearman.JOB_COMPLETE:
@@ -133,16 +138,7 @@ class MCPClient:
         return payload
 
     def execute(self, uuid, choice):
-        gm_client = GearmanClient([self.server])
-        data = {}
-        data["jobUUID"] = uuid
-        data["chain"] = choice
-        # Since `execute` is not using `_rpc_sync_call` yet, the user ID needs
-        # to be added manually here.
-        data["user_id"] = self.user.id
-        gm_client.submit_job(b"approveJob", data)
-        gm_client.shutdown()
-        return
+        self._rpc_sync_call("approveJob", {"jobUUID": uuid, "chain": choice})
 
     def execute_unit(self, unit_id, choice, mscl_id=None):
         """Execute the jobs awaiting for approval associated to a given unit.
@@ -222,6 +218,14 @@ class MCPClient:
 
     def get_sips_statuses(self):
         return self._get_units_statuses(type_="SIP")
+
+    def get_units_summary(self, type_):
+        data = {"type": type_, "lang": self.lang}
+        return self._rpc_sync_call("getUnitsSummary", data)
+
+    def get_unit_job_groups(self, type_, unit_id):
+        data = {"type": type_, "id": unit_id, "lang": self.lang}
+        return self._rpc_sync_call("getUnitJobGroups", data)
 
     def get_unit_status(self, unit_id):
         data = {"id": unit_id, "lang": self.lang}

@@ -261,7 +261,7 @@ def test_call_reuses_scanner_and_batch_data(
     create_scanner: mock.Mock,
     load_file_data: mock.Mock,
     insert_events: mock.Mock,
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     file_uuids = [str(uuid.uuid4()), str(uuid.uuid4())]
     paths = ["/path/one", "/path/two"]
@@ -295,14 +295,29 @@ def test_call_reuses_scanner_and_batch_data(
     assert [event.file_uuid for event in event_queue] == file_uuids
 
 
+@pytest.fixture
+def organization_agent() -> models.Agent:
+    agent, _ = models.Agent.objects.get_or_create(
+        pk=models.Agent.objects.DEFAULT_ORGANIZATION_AGENT_PK,
+        defaults={
+            "agenttype": "organization",
+            "identifiervalue": "ORG",
+            "name": "Your Organization Name Here",
+            "identifiertype": "repository code",
+        },
+    )
+    return agent
+
+
 @pytest.mark.django_db
 @mock.patch("archivematica.MCPClient.clientScripts.antivirus.create_scanner")
 def test_call_preserves_scan_and_event_behavior(
     create_scanner: mock.Mock,
+    organization_agent: models.Agent,
     transfer: models.Transfer,
     transfer_file: models.File,
     user: User,
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     transfer_file.size = 42
     transfer_file.save(update_fields=["size"])
@@ -343,7 +358,7 @@ def test_call_preserves_scan_and_event_behavior(
     event = models.Event.objects.get(file_uuid=transfer_file, event_type="virus check")
     assert event.event_outcome == "Pass"
     assert set(event.agents.values_list("pk", flat=True)) == {
-        2,
+        organization_agent.pk,
         user.userprofile.agent_id,
     }
 

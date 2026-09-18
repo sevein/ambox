@@ -288,6 +288,13 @@ variables or in the gunicorn configuration file.
   - **Type:** `boolean`
   - **Default:** `false`
 
+- **`ARCHIVEMATICA_DASHBOARD_DASHBOARD_OIDC_AUTO_CREATE_USER`**:
+  - **Description:** enables automatic local user creation for successful OIDC
+    logins when no matching Dashboard user already exists.
+  - **Config file example:** `Dashboard.oidc_auto_create_user`
+  - **Type:** `boolean`
+  - **Default:** `true`
+
 - **`ARCHIVEMATICA_DASHBOARD_DASHBOARD_STORAGE_SERVICE_CLIENT_TIMEOUT`**:
   - **Description:** configures the Storage Service client to stop waiting for a
     response after a given number of seconds.
@@ -316,7 +323,7 @@ variables or in the gunicorn configuration file.
     the microservice jobs display.
   - **Config file example:** `Dashboard.polling_interval`
   - **Type:** `integer`
-  - **Default:** `10`
+  - **Default:** `5`
 
 - **`ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSP_ENABLED`**:
   - **Description:** **Experimental** support for [Control Security Policy] headers.
@@ -749,6 +756,9 @@ These variables specify the behaviour of OpenID Connect (OIDC) authentication.
 Only applicable if `ARCHIVEMATICA_DASHBOARD_DASHBOARD_OIDC_AUTHENTICATION` is
 set.
 
+Automatic local user creation for OIDC logins is controlled by
+`ARCHIVEMATICA_DASHBOARD_DASHBOARD_OIDC_AUTO_CREATE_USER`.
+
 - **`OIDC_RP_CLIENT_ID`**:
   - **Description:** OIDC client ID
   - **Type:** `string`
@@ -886,19 +896,19 @@ provides an example that implements the logging behaviour used in Archivematica
 [Control Security Policy]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 [DATABASES]: https://docs.djangoproject.com/en/1.8/ref/settings/#databases
 [Sending email]: https://docs.djangoproject.com/en/1.8/topics/email/
-[USER]: https://docs.gunicorn.org/en/stable/settings.html#user
-[GROUP]: https://docs.gunicorn.org/en/stable/settings.html#group
-[BIND]: https://docs.gunicorn.org/en/stable/settings.html#bind
-[WORKERS]: https://docs.gunicorn.org/en/stable/settings.html#workers
-[How Many Workers?]: https://docs.gunicorn.org/en/stable/design.html#how-many-workers
-[WORKER-CLASS]: https://docs.gunicorn.org/en/stable/settings.html#worker-class
-[TIMEOUT]: https://docs.gunicorn.org/en/stable/settings.html#timeout
-[RELOAD]: https://docs.gunicorn.org/en/stable/settings.html#reload
-[RELOAD-ENGINE]: https://docs.gunicorn.org/en/stable/settings.html#reload-engine
-[CHDIR]: https://docs.gunicorn.org/en/stable/settings.html#chdir
-[ACCESSLOG]: https://docs.gunicorn.org/en/stable/settings.html#accesslog
-[ERRORLOG]: https://docs.gunicorn.org/en/stable/settings.html#errorlog
-[LOGLEVEL]: https://docs.gunicorn.org/en/stable/settings.html#loglevel
-[PROC-NAME]: https://docs.gunicorn.org/en/stable/settings.html#proc-name
+[USER]: https://gunicorn.org/reference/settings/#user
+[GROUP]: https://gunicorn.org/reference/settings/#group
+[BIND]: https://gunicorn.org/reference/settings/#bind
+[WORKERS]: https://gunicorn.org/reference/settings/#workers
+[How Many Workers?]: https://gunicorn.org/design/#how-many-workers
+[WORKER-CLASS]: https://gunicorn.org/reference/settings/#worker-class
+[TIMEOUT]: https://gunicorn.org/reference/settings/#timeout
+[RELOAD]: https://gunicorn.org/reference/settings/#reload
+[RELOAD-ENGINE]: https://gunicorn.org/reference/settings/#reload-engine
+[CHDIR]: https://gunicorn.org/reference/settings/#chdir
+[ACCESSLOG]: https://gunicorn.org/reference/settings/#accesslog
+[ERRORLOG]: https://gunicorn.org/reference/settings/#errorlog
+[LOGLEVEL]: https://gunicorn.org/reference/settings/#loglevel
+[PROC-NAME]: https://gunicorn.org/reference/settings/#proc-name
 [django-csp policy settings]: https://django-csp.readthedocs.io/en/latest/configuration.html#policy-settings
 [csrf-cookie-httponly]: https://docs.djangoproject.com/en/4.2/howto/csrf/#acquiring-the-token-if-csrf-use-sessions-or-csrf-cookie-httponly-is-true

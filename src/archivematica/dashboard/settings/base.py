@@ -133,6 +133,11 @@ CONFIG_MAPPING = {
         "option": "oidc_allow_local_authentication",
         "type": "boolean",
     },
+    "oidc_auto_create_user": {
+        "section": "Dashboard",
+        "option": "oidc_auto_create_user",
+        "type": "boolean",
+    },
     "storage_service_client_timeout": {
         "section": "Dashboard",
         "option": "storage_service_client_timeout",
@@ -242,13 +247,14 @@ csrf_trusted_origins =
 use_x_forwarded_host = False
 oidc_authentication = False
 oidc_allow_local_authentication = True
+oidc_auto_create_user = True
 storage_service_client_timeout = 86400
 storage_service_client_quick_timeout = 5
 agentarchives_client_timeout = 300
 csp_enabled = False
 prometheus_enabled = False
 audit_log_middleware = False
-polling_interval = 10
+polling_interval = 5
 site_url =
 time_zone = UTC
 session_cookie_secure = True
@@ -648,6 +654,9 @@ if SHIBBOLETH_AUTHENTICATION:
         "shibboleth.context_processors.logout_link"
     ]
 
+    # The page the service provider returns to after logging out.
+    LOGIN_EXEMPT_URLS.append(r"^administration/accounts/logged-out$")
+
     from archivematica.dashboard.settings.components.shibboleth_auth import *
 
 LDAP_AUTHENTICATION = config.get("ldap_authentication")
@@ -689,6 +698,7 @@ if CAS_AUTHENTICATION:
 OIDC_AUTHENTICATION = config.get("oidc_authentication")
 if OIDC_AUTHENTICATION:
     OIDC_ALLOW_LOCAL_AUTHENTICATION = config.get("oidc_allow_local_authentication")
+    OIDC_CREATE_USER = config.get("oidc_auto_create_user")
 
     INSTALLED_APPS += ["mozilla_django_oidc"]
     ALLOW_USER_EDITS = False

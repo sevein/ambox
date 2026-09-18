@@ -10,18 +10,18 @@ repos:
         src/archivematica/(MCPClient|MCPServer|dashboard)/install/.*\.json
       )
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.20
+  rev: v0.16.8
   hooks:
   - id: ruff
     args: [--fix, --exit-non-zero-on-fix]
   - id: ruff-format
 - repo: https://github.com/adamchainz/django-upgrade
-  rev: "1.31.1"
+  rev: "1.32.0"
   hooks:
   - id: django-upgrade
     args: [--target-version, "5.2"]
 - repo: https://github.com/igorshubovych/markdownlint-cli
-  rev: v0.49.0
+  rev: v0.49.1
   hooks:
   - id: markdownlint
     exclude: |
@@ -46,7 +46,7 @@ repos:
   hooks:
     - id: validate-cff
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v2.1.0
+  rev: v2.3.1
   hooks:
   - id: mypy
     # Override upstream args to omit --ignore-missing-imports on purpose.
@@ -75,7 +75,6 @@ repos:
     - jsonfield
     - lazy-paged-sequence
     - metsrw
-    - mockldap @ git+https://github.com/artefactual-labs/mockldap@v0.3.1
     - mozilla-django-oidc
     - orjson
     - playwright
@@ -90,12 +89,13 @@ repos:
     - types-requests
     - unidecode
 - repo: https://github.com/tcort/markdown-link-check
-  rev: v3.14.2
+  rev: v3.15.0
   hooks:
   - id: markdown-link-check
     stages: [manual]
     args: [--quiet, --config, .markdown-link-check.json]
     exclude: |
       (?x)^(
-        src/archivematica/dashboard/media/vendor/.*\.md
+        src/archivematica/dashboard/media/vendor/.*\.md|
+        RELEASENOTES.md
       )

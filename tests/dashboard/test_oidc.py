@@ -1,13 +1,12 @@
 import pytest
 import pytest_django
+from django.contrib.auth.models import User
 
 from archivematica.dashboard.components.accounts.backends import CustomOIDCBackend
 
 
 @pytest.fixture
-def settings(
-    settings: pytest_django.fixtures.SettingsWrapper,
-) -> pytest_django.fixtures.SettingsWrapper:
+def settings(settings: pytest_django.Settings) -> pytest_django.Settings:
     settings.OIDC_OP_TOKEN_ENDPOINT = "https://example.com/token"
     settings.OIDC_OP_USER_ENDPOINT = "https://example.com/user"
     settings.OIDC_RP_CLIENT_ID = "rp_client_id"
@@ -22,6 +21,7 @@ def settings(
         "family_name": "last_name",
     }
     settings.OIDC_OP_SET_ROLES_FROM_CLAIMS = False
+    settings.OIDC_CREATE_USER = True
     settings.OIDC_OP_ROLE_CLAIM_PATH = "realm_access.roles"
     settings.OIDC_ID_ATTRIBUTE_MAP = {"email": "email"}
     settings.OIDC_USERNAME_ALGO = lambda email: email
@@ -30,9 +30,7 @@ def settings(
 
 
 @pytest.mark.django_db
-def test_create_user(
-    settings: pytest_django.fixtures.SettingsWrapper,
-) -> None:
+def test_create_user(settings: pytest_django.Settings) -> None:
     """
     Test that the user is created with the correct attributes and that the API key is generated.
     User will not be superuser because the setting OIDC_OP_SET_ROLES_FROM_CLAIMS is False.
@@ -59,9 +57,7 @@ def test_create_user(
 
 
 @pytest.mark.django_db
-def test_create_user_set_admin_from_claim(
-    settings: pytest_django.fixtures.SettingsWrapper,
-) -> None:
+def test_create_user_set_admin_from_claim(settings: pytest_django.Settings) -> None:
     """
     Test that the user is created with the correct attributes and that the API key is generated.
     User will be superuser because the setting OIDC_OP_SET_ROLES_FROM_CLAIMS is True
@@ -96,9 +92,7 @@ def test_create_user_set_admin_from_claim(
 
 
 @pytest.mark.django_db
-def test_create_user_role_from_claims(
-    settings: pytest_django.fixtures.SettingsWrapper,
-) -> None:
+def test_create_user_role_from_claims(settings: pytest_django.Settings) -> None:
     """
     The role given to a new user is based on token contents.
     In this test, we're ensuring that the highest-permission valid role
@@ -134,7 +128,7 @@ def test_create_user_role_from_claims(
 
 @pytest.mark.django_db
 def test_create_user_role_from_claims_reverese_token_role_order(
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     """
     The role given to a new user is based on token contents.
@@ -171,7 +165,7 @@ def test_create_user_role_from_claims_reverese_token_role_order(
 
 @pytest.mark.django_db
 def test_create_user_set_admin_from_alternate_token_value(
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     settings.OIDC_OP_SET_ROLES_FROM_CLAIMS = True
     settings.OIDC_OP_ROLE_CLAIM_PATH = "realm_access.roles"
@@ -204,7 +198,7 @@ def test_create_user_set_admin_from_alternate_token_value(
 
 @pytest.mark.django_db
 def test_create_user_failure_no_claims_in_token(
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     settings.OIDC_OP_SET_ROLES_FROM_CLAIMS = True
     settings.OIDC_OP_ROLE_CLAIM_PATH = "realm_access.roles"
@@ -224,7 +218,7 @@ def test_create_user_failure_no_claims_in_token(
 
 @pytest.mark.django_db
 def test_create_user_set_admin_from_alt_claim_path(
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     settings.OIDC_OP_SET_ROLES_FROM_CLAIMS = True
     settings.OIDC_OP_ROLE_CLAIM_PATH = "custom_claims.user_roles"
@@ -256,7 +250,7 @@ def test_create_user_set_admin_from_alt_claim_path(
 
 @pytest.mark.django_db
 def test_create_user_admin_from_claims_simple_role(
-    settings: pytest_django.fixtures.SettingsWrapper,
+    settings: pytest_django.Settings,
 ) -> None:
     settings.OIDC_OP_SET_ROLES_FROM_CLAIMS = True
     settings.OIDC_OP_ROLE_CLAIM_PATH = "role"
@@ -287,7 +281,7 @@ def test_create_user_admin_from_claims_simple_role(
 
 
 @pytest.mark.django_db
-def test_get_userinfo(settings: pytest_django.fixtures.SettingsWrapper) -> None:
+def test_get_userinfo(settings: pytest_django.Settings) -> None:
     # Encoded at https://www.jsonwebtoken.io/
     # {"email": "test@example.com"}
     id_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJqdGkiOiI1M2QyMzUzMy04NDk0LTQyZWQtYTJiZC03Mzc2MjNmMjUzZjciLCJpYXQiOjE1NzMwMzE4NDQsImV4cCI6MTU3MzAzNTQ0NH0.m3nHgvj_DyVJMcW5eyYuUss1Y0PNzJV2O3bX0b_DCmI"
@@ -302,3 +296,50 @@ def test_get_userinfo(settings: pytest_django.fixtures.SettingsWrapper) -> None:
     assert info["email"] == "test@example.com"
     assert info["first_name"] == "Test"
     assert info["last_name"] == "User"
+
+
+@pytest.mark.django_db
+def test_get_or_create_user_does_not_create_user_when_disabled(
+    settings: pytest_django.Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings.OIDC_CREATE_USER = False
+    backend = CustomOIDCBackend()
+    monkeypatch.setattr(
+        backend,
+        "get_userinfo",
+        lambda access_token, id_token, payload: {"email": "new@example.com"},
+    )
+
+    user = backend.get_or_create_user(
+        access_token="access-token",
+        id_token="id-token",
+        payload={"sub": "test"},
+    )
+
+    assert user is None
+    assert User.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_get_or_create_user_returns_existing_user_when_creation_disabled(
+    settings: pytest_django.Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings.OIDC_CREATE_USER = False
+    existing_user = User.objects.create_user(
+        username="existing@example.com", email="existing@example.com"
+    )
+    backend = CustomOIDCBackend()
+    monkeypatch.setattr(
+        backend,
+        "get_userinfo",
+        lambda access_token, id_token, payload: {"email": "existing@example.com"},
+    )
+
+    user = backend.get_or_create_user(
+        access_token="access-token",
+        id_token="id-token",
+        payload={"sub": "test"},
+    )
+
+    assert user == existing_user
+    assert User.objects.count() == 1

@@ -24,6 +24,9 @@
 - [Cleaning up](#cleaning-up)
 - [Percona tuning](#percona-tuning)
 - [OIDC authentication](#oidc-authentication)
+- [LDAP authentication](#ldap-authentication)
+- [CAS authentication](#cas-authentication)
+- [Shibboleth authentication](#shibboleth-authentication)
 - [Instrumentation](#instrumentation)
   - [Running Prometheus and Grafana](#running-prometheus-and-grafana)
   - [Percona Monitoring and Management](#percona-monitoring-and-management)
@@ -528,6 +531,281 @@ Administrative user:
 - Username: `admin@example.com`
 - Password: `test`
 
+The Dashboard, the Storage Service and the browser all reach Keycloak as
+`keycloak.localhost:8080`. The hostname must resolve to the local host in the
+browser, which is the standard behaviour for `*.localhost` names in modern
+browsers and Linux distributions, and the overlay also sets it as a Docker
+network alias so the containers can use the same URLs. If `keycloak.localhost`
+does not resolve on your host, add the following entry to `/etc/hosts`:
+
+```text
+127.0.0.1 keycloak.localhost
+```
+
+## LDAP authentication
+
+Use the `docker-compose.ldap.yml` overlay to start a [VegardIT OpenLDAP]
+server and enable LDAP authentication in the Dashboard and Storage Service.
+The base development environment must be installed and bootstrapped first as
+described in the [Installation](#installation) section:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml up -d --build
+```
+
+The OpenLDAP image is pinned by digest so the development and integration-test
+directories use the same server build. Its initial directory entries are
+loaded from `hack/etc/ldap/init_org_entries.ldif`, but only while the directory
+is being initialized. The image stores its configuration and database in
+anonymous volumes that Compose reattaches when a container is recreated, and
+the initialization marker they carry makes the entrypoint skip the LDIF. Pass
+`--renew-anon-volumes` to discard that state after editing the LDIF or the LDAP
+environment settings:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.ldap.yml up -d \
+  --force-recreate --renew-anon-volumes \
+  openldap archivematica-dashboard archivematica-storage-service
+```
+
+Without `--renew-anon-volumes` the server keeps its previous directory and the
+edit is silently ignored.
+
+This overlay uses unencrypted LDAP and shared test passwords, and is intended
+for local testing and demonstrations only. The LDAP server is available to
+host tools at `ldap://127.0.0.1:62083`; its directory uses the base DN
+`dc=archivematica,dc=org`. For example:
+
+```shell
+ldapsearch -x -H ldap://127.0.0.1:62083 \
+  -D uid=ldapadmin,dc=archivematica,dc=org -w test \
+  -b dc=archivematica,dc=org '(objectClass=*)'
+```
+
+All application users share the password `test`:
+
+| Username   | LDAP groups                                          | Dashboard access | Storage Service role |
+| ---------- | ---------------------------------------------------- | ---------------- | -------------------- |
+| `demo`     | `enabled`                                            | Regular user     | Reader               |
+| `reviewer` | `enabled`, `reviewers`                               | Regular user     | Reviewer             |
+| `manager`  | `enabled`, `managers`, `reviewers`                   | Regular user     | Manager              |
+| `admin`    | `enabled`, `administrators`, `managers`, `reviewers` | Superuser        | Administrator        |
+| `disabled` | `enabled`, `disabled`                                | Denied           | Denied               |
+| `outsider` | none                                                 | Denied           | Denied               |
+
+Each user also has a `<username>_ldap` uid because the integration test suite
+in `tests/integration/` shares this directory and enables
+`AUTH_LDAP_USERNAME_SUFFIX`. Use the bare usernames with this overlay, which
+leaves the suffix unset.
+
+The multi-role memberships make precedence visible: Administrator wins over
+Manager and Reviewer, and Manager wins over Reviewer. The `enabled` group is
+required for authentication and `disabled` takes precedence over it.
+LDAP attributes populate each local user's first name, last name, and email on
+every login. The Dashboard maps the `administrators` group to its staff and
+superuser flags; its other authenticated users have the same regular-user
+access.
+
+The Storage Service maps LDAP groups to its permission roles:
+
+- **Reader** can view and list records.
+- **Reviewer** adds approval or rejection of package deletion requests.
+- **Manager** can perform storage and configuration operations, but cannot
+  manage users.
+- **Administrator** has unrestricted access, including user management.
+
+LDAP authentication is added ahead of the local Django authentication backend,
+so the local accounts created during bootstrap can still log in. Enabling LDAP
+also disables user editing across both applications, for local accounts as well
+as LDAP ones: the Dashboard profile page drops the name, email, and password
+fields, keeping only the API key and email preferences, and the Storage Service
+hides its user creation and editing actions.
+
+Visiting the Dashboard at <http://127.0.0.1:62080> or the Storage Service at
+<http://127.0.0.1:62081> shows the normal login page; enter one of the LDAP
+usernames above to exercise the integration.
+
+[VegardIT OpenLDAP]: https://github.com/vegardit/docker-openldap
+
+## CAS authentication
+
+Use the `docker-compose.cas.yml` overlay to start an [Apereo CAS] server and
+enable the Dashboard's and Storage Service's CAS authentication settings. The
+base development environment must be installed and bootstrapped first as
+described in the [Installation](#installation) section:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.cas.yml up -d --build
+```
+
+The first build of the `cas` image takes several minutes: it downloads the
+[Apereo CAS WAR overlay] template pinned to the `CAS_OVERLAY_COMMIT` build
+argument (a commit of the overlay template's `7.3` branch that builds the CAS
+`7.3.8` stable release) and compiles it with the JSON service registry and
+JSON user store modules.
+Subsequent builds are cached. The CAS server configuration is mounted from
+`hack/etc/cas/` at runtime, so editing the properties, the registered services
+in `hack/etc/cas/services/` or the users in `hack/etc/cas/config/users.json`
+only requires restarting the `cas` service.
+
+CAS support in Archivematica uses `django-cas-ng`, whose migrations are only
+applied when CAS is enabled. If the environment was bootstrapped without the
+CAS overlay, apply the migrations once before logging in:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.cas.yml run --rm --no-deps \
+  --entrypoint /src/src/archivematica/dashboard/manage.py \
+  archivematica-dashboard migrate --noinput
+
+docker compose -f docker-compose.yml -f docker-compose.cas.yml run --rm --no-deps \
+  --entrypoint /src/src/archivematica/storage_service/manage.py \
+  archivematica-storage-service migrate --noinput
+```
+
+This overlay is intended for local testing and demonstrations only. The CAS
+login interface is available at <http://cas.localhost:62082/cas/login> and the
+following users are predefined:
+
+All users share the password `test` and are members of the CAS groups
+released through the `memberOf` attribute:
+
+| Username   | CAS groups                | Dashboard role | Storage Service role |
+| ---------- | ------------------------- | -------------- | -------------------- |
+| `demo`     | `users`                   | Regular user   | Reader               |
+| `admin`    | `administrators`, `users` | Superuser      | Administrator        |
+| `manager`  | `managers`, `users`       | Regular user   | Manager              |
+| `reviewer` | `reviewers`, `users`      | Regular user   | Reviewer             |
+
+The overlay maps the CAS groups to roles through the
+`AUTH_CAS_CHECK_ADMIN_ATTRIBUTES` and `AUTH_CAS_*_ATTRIBUTE` settings. The
+Dashboard only supports mapping to its superuser flag; the Storage Service
+also supports the manager and reviewer roles and falls back to the reader
+role when no group matches.
+
+The `cas.localhost` hostname must resolve to the local host in the browser,
+which is the standard behaviour for `*.localhost` names in modern browsers and
+Linux distributions. The overlay also sets it as a Docker network alias so the
+Dashboard and Storage Service containers can use the same CAS URL for ticket
+validation. If `cas.localhost` does not resolve on your host, add the
+following entry to `/etc/hosts`:
+
+```text
+127.0.0.1 cas.localhost
+```
+
+Visiting the Dashboard at <http://127.0.0.1:62080> redirects to the CAS login
+page. After authenticating, open the Storage Service at
+<http://127.0.0.1:62081> in the same browser session to verify CAS single
+sign-on.
+
+[Apereo CAS]: https://apereo.github.io/cas/
+[Apereo CAS WAR overlay]: https://apereo.github.io/cas/7.3.x/installation/WAR-Overlay-Installation.html
+
+## Shibboleth authentication
+
+Use the `docker-compose.shibboleth.yml` overlay to put a [Shibboleth Service
+Provider] in front of the Dashboard and the Storage Service, with a Keycloak
+realm as the SAML identity provider, and enable the Shibboleth authentication
+settings of both applications. The base development environment must be
+installed and bootstrapped first as described in the
+[Installation](#installation) section:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.shibboleth.yml up -d --build
+```
+
+This overlay differs from the other single sign-on overlays in how the
+applications are reached. The Dashboard and the Storage Service do not speak
+SAML themselves: they trust the `eppn`, `givenName`, `sn`, `mail` and
+`entitlement` request headers set by a service provider in front of them. The
+overlay builds a small Apache httpd image with `mod_shib` (the Shibboleth
+Service Provider packaged by Debian) from `hack/etc/shibboleth/` and replaces
+the nginx configuration so that <http://127.0.0.1:62080> and
+<http://127.0.0.1:62081> are proxied through it. Requests between the
+Archivematica services keep using the container names and never go through
+the service provider. Requests to the `/api/` paths of both applications do
+not require a Shibboleth session, so API clients keep working with their API
+keys, and neither do the Dashboard's static files and logged-out page, which
+the browser loads once the session is gone. Requests that carry the attribute
+headers themselves are rejected by the service provider (`Attempt to spoof
+header` in its log).
+
+The service provider configuration is mounted from `hack/etc/shibboleth/` at
+runtime, so editing it only requires recreating the `shibboleth-sp` service.
+The identity provider is a `shibboleth` realm that Keycloak imports from
+`hack/etc/keycloak/shibboleth-realm.json` when its container is created, so
+after editing the realm recreate both:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.shibboleth.yml up -d \
+  --force-recreate keycloak shibboleth-sp
+```
+
+This overlay is intended for local testing and demonstrations only: it uses
+unencrypted HTTP, shared test passwords, unsigned authentication requests and
+identity provider metadata fetched over plain HTTP. Visiting the Dashboard at
+<http://127.0.0.1:62080> or the Storage Service at <http://127.0.0.1:62081>
+redirects to the Keycloak login page. The following users are predefined, all
+with the password `test`:
+
+| Username   | Entitlements                                                          | Dashboard role | Storage Service role |
+| ---------- | --------------------------------------------------------------------- | -------------- | -------------------- |
+| `demo`     | `preservation-user`                                                   | Regular user   | Reader               |
+| `reviewer` | `preservation-reviewer`                                               | Regular user   | Reviewer             |
+| `manager`  | `preservation-manager`, `preservation-reviewer`                       | Regular user   | Manager              |
+| `admin`    | `preservation-admin`, `preservation-manager`, `preservation-reviewer` | Superuser      | Administrator        |
+
+The applications identify users by the `eppn` (eduPersonPrincipalName)
+attribute, which the realm releases as the user's email address, so the local
+accounts are named `demo@example.com`, `admin@example.com` and so on; their
+first name, last name and email are taken from the `givenName`, `sn` and `mail`
+attributes on every login. The entitlements are Keycloak groups whose
+`entitlement` attribute is released as the multi-valued eduPersonEntitlement
+attribute. Both applications require it: the Dashboard maps
+`preservation-admin` to its superuser flag, and the Storage Service maps
+`preservation-admin`, `preservation-manager` and `preservation-reviewer` to its
+administrator, manager and reviewer roles, falling back to the reader role. The
+overlapping memberships make the precedence visible: administrator wins over
+manager, which wins over reviewer. The attribute and entitlement names are part
+of each application's settings rather than environment variables, so the
+overlay only enables the backends. Enabling Shibboleth disables user editing in
+both applications.
+
+Logging out ends the session in the service provider only. The Keycloak
+session survives, so the next visit logs the same user in again without asking
+for a password; to switch users, sign out of Keycloak at
+<http://keycloak.localhost:8080/realms/shibboleth/protocol/openid-connect/logout>
+or use a private browsing window. The Dashboard returns to its logged-out page
+after the service provider logout.
+
+The service provider and the browser reach Keycloak as
+`keycloak.localhost:8080`, the hostname the [OIDC overlay](#oidc-authentication)
+uses too, so the same `/etc/hosts` note applies if it does not resolve on your
+host. Keycloak is told this hostname (`KC_HOSTNAME`) because the identity
+provider metadata embeds it, and the service provider fetches that metadata
+through the `keycloak` container name because libcurl, which `shibd` uses,
+resolves `*.localhost` names to the loopback address on its own.
+
+To inspect a session, open <http://127.0.0.1:62080/Shibboleth.sso/Session> (or
+the same path on port 62081) after logging in: it lists the attributes the
+service provider received. The service provider status page is limited to the
+container, and its log carries both `shibd` and Apache:
+
+```shell
+docker compose -f docker-compose.yml -f docker-compose.shibboleth.yml \
+  exec shibboleth-sp curl -s http://127.0.0.1/Shibboleth.sso/Status
+
+docker compose -f docker-compose.yml -f docker-compose.shibboleth.yml \
+  logs shibboleth-sp
+```
+
+The Keycloak administration console at <http://keycloak.localhost:8080>
+(username `admin`, password `admin`) shows the `shibboleth` realm, its two SAML
+clients and the `archivematica-attributes` client scope that releases the
+attributes.
+
+[Shibboleth Service Provider]: https://shibboleth.atlassian.net/wiki/spaces/SP3/overview
+
 ## Instrumentation
 
 ### Running Prometheus and Grafana
@@ -667,6 +945,6 @@ environment is not working? Here are some tips:
   branches, make sure they are not outdated.  Rebase often!
 - Look for open/closed [issues][am-issues] that may relate to your
   problem!
-- [Get support](https://www.archivematica.org/community/support/).
+- [Get support](https://www.archivematica.org/community/).
 
 [am-issues]: https://github.com/archivematica/issues/issues

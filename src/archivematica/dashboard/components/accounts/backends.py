@@ -19,6 +19,20 @@ class CustomShibbolethRemoteUserBackend(ShibbolethRemoteUserBackend):
         generate_api_key(user)
         return user
 
+    @staticmethod
+    def update_user_params(user, params):
+        """Copy the released attributes onto the user when they changed.
+
+        The library's version fails when the identity provider releases no
+        attribute that maps to a user field.
+        """
+        if params and any(
+            getattr(user, name) != value for name, value in params.items()
+        ):
+            for name, value in params.items():
+                setattr(user, name, value)
+            user.save()
+
 
 class CustomCASBackend(CASBackend):
     def configure_user(self, user):
@@ -35,10 +49,10 @@ class CustomCASBackend(CASBackend):
 class CustomLDAPBackend(LDAPBackend):
     """Append a usernamed suffix to LDAP users, if configured"""
 
-    def ldap_to_django_username(self, username):
-        return username.rstrip(settings.AUTH_LDAP_USERNAME_SUFFIX)
+    def ldap_to_django_username(self, username: str) -> str:
+        return username.removesuffix(settings.AUTH_LDAP_USERNAME_SUFFIX)
 
-    def django_to_ldap_username(self, username):
+    def django_to_ldap_username(self, username: str) -> str:
         return username + settings.AUTH_LDAP_USERNAME_SUFFIX
 
 

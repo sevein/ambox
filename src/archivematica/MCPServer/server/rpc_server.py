@@ -23,9 +23,18 @@ from typing import Literal
 import gearman
 from django.conf import settings as django_settings
 from django.db import connection
+from django.db.models import Count
 from django.db.models import Exists
+from django.db.models import FloatField
+from django.db.models import Func
+from django.db.models import JSONField
+from django.db.models import Max
 from django.db.models import Min
 from django.db.models import OuterRef
+from django.db.models import Q
+from django.db.models import Subquery
+from django.db.models.functions import JSONObject
+from django.utils import translation
 from django.utils.translation import gettext as _
 from gearman import GearmanWorker
 from lxml import etree
@@ -34,6 +43,7 @@ from archivematica.archivematicaCommon.dbconns import auto_close_old_connections
 from archivematica.archivematicaCommon.gearman_encoder import JSONDataEncoder
 from archivematica.dashboard.main.idempotency import IdempotencyKeyConflictError
 from archivematica.dashboard.main.idempotency import IdempotencyRequestInProgressError
+from archivematica.dashboard.main.models import PACKAGE_STATUS_FAILED
 from archivematica.dashboard.main.models import PACKAGE_STATUS_PROCESSING
 from archivematica.dashboard.main.models import SIP
 from archivematica.dashboard.main.models import UNIT_VARIABLE_PROCESSING_CONFIGURATION
@@ -44,6 +54,7 @@ from archivematica.MCPServer.server.jobs.chain import get_job_class_for_link
 from archivematica.MCPServer.server.packages import create_package
 from archivematica.MCPServer.server.packages import get_approve_transfer_chain_id
 from archivematica.MCPServer.server.processing_config import get_processing_fields
+from archivematica.MCPServer.server.workflow import TERMINAL_PACKAGE_STATUS_FAILED
 
 logger = logging.getLogger("archivematica.mcp.server.rpc_server")
 
@@ -56,6 +67,12 @@ logger = logging.getLogger("archivematica.mcp.server.rpc_server")
 # labels here.
 ProcessingUnitState = Literal["waiting_for_processing"]
 PROCESSING_STATE_WAITING_FOR_PROCESSING: ProcessingUnitState = "waiting_for_processing"
+INGEST_START_TIME_MARKER_GROUP = "Assign file UUIDs and checksums"
+
+UNIT_TYPES = {
+    "SIP": (SIP, ("unitSIP", "unitDIP")),
+    "Transfer": (Transfer, ("unitTransfer",)),
+}
 
 
 def _transfer_directory_name(transfer: Transfer) -> str:
@@ -101,6 +118,16 @@ def _transfer_processing_start_timestamps(transfer_uuids) -> dict[str, float]:
         str(marker["unituuid"]): _datetime_to_unix_timestamp(marker["createdtime"])
         for marker in markers
     }
+
+
+def _get_unit_type(payload):
+    try:
+        type_ = payload["type"]
+        model, job_unit_types = UNIT_TYPES[type_]
+        lang = payload["lang"]
+    except KeyError as err:
+        raise UnexpectedPayloadError(f"Missing parameter: {err}")
+    return type_, model, job_unit_types, lang
 
 
 class RPCServerError(Exception):
@@ -427,6 +454,292 @@ class RPCServer(GearmanWorker):
         raise_exc = False
         """
         return get_processing_fields(self.workflow, payload.get("lang"))
+
+    def _units_summary_handler(self, worker, job, payload):
+        """Return lightweight monitor summaries for SIPs or Transfers.
+
+        Unlike ``getUnitsStatuses``, this response never embeds Job rows. It
+        includes only the latest Job fields needed to reproduce the unit status
+        icon, the timestamp shown in the monitor, and the UUIDs of Jobs awaiting
+        decisions so delayed detail responses cannot restore obsolete choices.
+
+        [config]
+        name = getUnitsSummary
+        raise_exc = False
+        """
+        type_, model, job_unit_types, lang = _get_unit_type(payload)
+        latest_jobs = Job.objects.filter(
+            sipuuid=OuterRef("uuid"), unittype__in=job_unit_types
+        ).order_by("-createdtime", "-jobuuid")
+        latest_jobs = latest_jobs.annotate(
+            data=JSONObject(
+                uuid="jobuuid",
+                type="jobtype",
+                group="microservicegroup",
+                link="microservicechainlink",
+                status="currentstep",
+                timestamp=Func(
+                    "createdtime",
+                    function="UNIX_TIMESTAMP",
+                    output_field=FloatField(),
+                ),
+                directory="directory",
+            )
+        )
+        oldest_jobs = Job.objects.filter(
+            sipuuid=OuterRef("uuid"), unittype__in=job_unit_types
+        ).order_by("createdtime", "jobuuid")
+        start_marker_jobs = Job.objects.filter(
+            sipuuid=OuterRef("uuid"),
+            unittype__in=job_unit_types,
+            microservicegroup=INGEST_START_TIME_MARKER_GROUP,
+        ).order_by("-createdtime", "-jobuuid")
+        units = model.objects.filter(hidden=False).annotate(
+            has_jobs=Exists(
+                Job.objects.filter(
+                    sipuuid=OuterRef("uuid"), unittype__in=job_unit_types
+                )
+            ),
+            latest_job=Subquery(
+                latest_jobs.values("data")[:1], output_field=JSONField()
+            ),
+            oldest_job_time=Subquery(oldest_jobs.values("createdtime")[:1]),
+            start_marker_time=Subquery(start_marker_jobs.values("createdtime")[:1]),
+        )
+        if type_ == "Transfer":
+            units = units.filter(
+                Q(has_jobs=True)
+                | Q(status__in=(PACKAGE_STATUS_PROCESSING, PACKAGE_STATUS_FAILED))
+            )
+        else:
+            units = units.filter(has_jobs=True)
+
+        units = list(units)
+        # Fetch decision identities in one batch, with stable ordering for
+        # changed-aware polling. Derive the flag from these same rows so the
+        # two fields cannot disagree if a decision changes between queries.
+        awaiting_job_uuids: dict[str, list[str]] = {}
+        for unit_id, job_id in (
+            Job.objects.filter(
+                sipuuid__in=[unit.uuid for unit in units],
+                unittype__in=job_unit_types,
+                currentstep=Job.STATUS_AWAITING_DECISION,
+            )
+            .order_by("jobuuid")
+            .values_list("sipuuid", "jobuuid")
+        ):
+            awaiting_job_uuids.setdefault(str(unit_id), []).append(str(job_id))
+
+        processing_start_times = {}
+        if type_ == "Transfer":
+            queued_unit_ids = [unit.uuid for unit in units if not unit.has_jobs]
+            processing_start_times = _transfer_processing_start_timestamps(
+                queued_unit_ids
+            )
+
+        access_system_ids = {}
+        if type_ == "SIP":
+            for sip_id, access_system_id in (
+                Transfer.objects.filter(file__sip_id__in=[unit.uuid for unit in units])
+                .values_list("file__sip_id", "access_system_id")
+                .distinct()
+            ):
+                access_system_ids.setdefault(str(sip_id), access_system_id)
+
+        results = []
+        for unit in units:
+            unit_id = str(unit.uuid)
+            latest_job = unit.latest_job
+            if latest_job is None:
+                if unit.status == PACKAGE_STATUS_FAILED and unit.completed_at:
+                    timestamp = _datetime_to_unix_timestamp(unit.completed_at)
+                else:
+                    timestamp = processing_start_times.get(unit_id, 0)
+            else:
+                timestamp = float(latest_job["timestamp"])
+
+            if latest_job is None:
+                started_timestamp = processing_start_times.get(unit_id, timestamp)
+            else:
+                started_at = unit.start_marker_time or unit.oldest_job_time
+                if started_at is None:
+                    started_timestamp = timestamp
+                else:
+                    started_timestamp = _datetime_to_unix_timestamp(started_at)
+
+            if latest_job is None:
+                directory = _transfer_directory_name(unit)
+                if unit.status == PACKAGE_STATUS_FAILED:
+                    with translation.override(lang):
+                        failure_type = _("Failed before processing started")
+                    status = {
+                        "currentstep": Job.STATUS_FAILED,
+                        "type": failure_type,
+                        "microservicegroup": "",
+                    }
+                else:
+                    status = None
+            else:
+                directory_job = Job(
+                    directory=latest_job["directory"],
+                    sipuuid=unit.uuid,
+                )
+                directory = str(directory_job.get_directory_name())
+                terminal_package_status = None
+                try:
+                    link = self.workflow.get_link(latest_job["link"])
+                except KeyError:
+                    job_type = latest_job["type"]
+                    group = latest_job["group"]
+                else:
+                    job_type = link.get_label("description", lang)
+                    group = link.get_label("group", lang)
+                    terminal_package_status = link.package_status
+                status = {
+                    "currentstep": latest_job["status"],
+                    "type": job_type,
+                    "microservicegroup": group,
+                }
+                # Legacy packages may already be persisted as Done because a
+                # failure branch ended with a successful cleanup Job. Preserve
+                # their declared workflow outcome in monitor summaries too.
+                if (
+                    unit.status == PACKAGE_STATUS_FAILED
+                    or terminal_package_status == TERMINAL_PACKAGE_STATUS_FAILED
+                ):
+                    status["currentstep"] = Job.STATUS_FAILED
+
+            item = {
+                "uuid": unit_id,
+                "directory": directory,
+                "timestamp": timestamp,
+                "started_at": started_timestamp,
+                "active": unit.active,
+                "status": status,
+                "has_awaiting_decision": bool(awaiting_job_uuids.get(unit_id)),
+                "awaiting_job_uuids": awaiting_job_uuids.get(unit_id, []),
+            }
+            if (
+                type_ == "Transfer"
+                and not unit.has_jobs
+                and unit.status == PACKAGE_STATUS_PROCESSING
+            ):
+                item["processing_state"] = PROCESSING_STATE_WAITING_FOR_PROCESSING
+            if type_ == "SIP":
+                item["access_system_id"] = access_system_ids.get(unit_id)
+            results.append(item)
+
+        results.sort(key=lambda item: item["timestamp"], reverse=True)
+        return results
+
+    def _unit_job_groups_handler(self, worker, job, payload):
+        """Return aggregated Job rows for one SIP or Transfer.
+
+        Completed and executing Jobs are grouped by workflow link and status.
+        Jobs awaiting decisions remain individual because their UUID and
+        choices are actionable processing state.
+
+        [config]
+        name = getUnitJobGroups
+        raise_exc = False
+        """
+        _type, model, job_unit_types, lang = _get_unit_type(payload)
+        try:
+            unit_id = payload["id"]
+        except KeyError as err:
+            raise UnexpectedPayloadError(f"Missing parameter: {err}")
+        if not model.objects.filter(pk=unit_id, hidden=False).exists():
+            raise NotFoundError("Unit not found")
+
+        jobs = Job.objects.filter(sipuuid=unit_id, unittype__in=job_unit_types)
+        representative_jobs = Job.objects.filter(
+            sipuuid=unit_id,
+            unittype__in=job_unit_types,
+            microservicechainlink=OuterRef("microservicechainlink"),
+            currentstep=OuterRef("currentstep"),
+        ).order_by("-createdtime", "-jobuuid")
+        aggregate_rows = (
+            jobs.exclude(currentstep=Job.STATUS_AWAITING_DECISION)
+            .values("microservicechainlink", "currentstep")
+            .annotate(
+                count=Count("jobuuid"),
+                first_time=Min("createdtime"),
+                latest_time=Max("createdtime"),
+            )
+            # Add the representative after all aggregates so Django does not
+            # group by the subquery and evaluate it for every input Job.
+            .annotate(
+                job_uuid=Subquery(representative_jobs.values("jobuuid")[:1]),
+            )
+        )
+        waiting_rows = jobs.filter(currentstep=Job.STATUS_AWAITING_DECISION).order_by(
+            "-createdtime", "-jobuuid"
+        )
+        jobs_awaiting_decisions = self.package_queue.jobs_awaiting_decisions()
+
+        rows = []
+        for aggregate in aggregate_rows:
+            link_id = aggregate["microservicechainlink"]
+            try:
+                link = self.workflow.get_link(link_id)
+            except KeyError:
+                continue
+            count = aggregate["count"]
+            row = {
+                "key": f"{link_id}:{aggregate['currentstep']}",
+                "link_id": str(link_id),
+                "currentstep": aggregate["currentstep"],
+                "timestamp": _datetime_to_unix_timestamp(aggregate["latest_time"]),
+                "first_timestamp": _datetime_to_unix_timestamp(aggregate["first_time"]),
+                "microservicegroup": link.get_label("group", lang),
+                "type": link.get_label("description", lang),
+                "count": count,
+                "uuid": str(aggregate["job_uuid"]),
+                "produces_tasks": False,
+            }
+            try:
+                row["produces_tasks"] = get_job_class_for_link(link).produces_tasks
+            except ValueError:
+                pass
+            rows.append(row)
+
+        for waiting_job in waiting_rows:
+            link_id = waiting_job.microservicechainlink
+            try:
+                link = self.workflow.get_link(link_id)
+            except KeyError:
+                continue
+            job_id = str(waiting_job.jobuuid)
+            row = {
+                "key": f"job:{job_id}",
+                "uuid": job_id,
+                "link_id": str(link_id),
+                "currentstep": waiting_job.currentstep,
+                "timestamp": _datetime_to_unix_timestamp(waiting_job.createdtime),
+                "first_timestamp": _datetime_to_unix_timestamp(waiting_job.createdtime),
+                "microservicegroup": link.get_label("group", lang),
+                "type": link.get_label("description", lang),
+                "count": 1,
+                "produces_tasks": False,
+            }
+            try:
+                row["produces_tasks"] = get_job_class_for_link(link).produces_tasks
+            except ValueError:
+                pass
+            try:
+                row["choices"] = _pull_choices(job_id, lang, jobs_awaiting_decisions)
+            except JobNotWaitingForApprovalError:
+                pass
+            rows.append(row)
+
+        rows.sort(key=lambda item: item["timestamp"], reverse=True)
+        groups = OrderedDict()
+        for row in rows:
+            groups.setdefault(row["microservicegroup"], []).append(row)
+        return [
+            {"name": group_name, "jobs": group_jobs}
+            for group_name, group_jobs in groups.items()
+        ]
 
     def _units_statuses_handler(self, worker, job, payload):
         """Returns the status of units that are of type SIP or Transfer.

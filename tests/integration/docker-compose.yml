@@ -1,10 +1,72 @@
 ---
 name: am-integration
 
+x-dashboard-environment: &dashboard-environment
+  PYTEST_ADDOPTS: ${PYTEST_ADDOPTS:-}
+  RUN_INTEGRATION_TESTS: "true"
+  DJANGO_LIVE_TEST_SERVER_ADDRESS: "archivematica-dashboard:8000"
+  DJANGO_ALLOW_ASYNC_UNSAFE: true
+  FORWARDED_ALLOW_IPS: "*"
+  AM_GUNICORN_ACCESSLOG: "/dev/null"
+  DJANGO_SETTINGS_MODULE: "archivematica.dashboard.settings.testmysql"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_GEARMAN_SERVER: "gearmand:4730"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_ELASTICSEARCH_SERVER: "elasticsearch:9200"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_PROMETHEUS_ENABLED: "1"
+  ARCHIVEMATICA_DASHBOARD_CLIENT_USER: "archivematica"
+  ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD: "demo"
+  ARCHIVEMATICA_DASHBOARD_CLIENT_HOST: "mysql"
+  ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE: "MCP"
+  ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED: "${AM_SEARCH_ENABLED:-true}"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SECURE: "false"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SAMESITE: "Lax"
+  ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSRF_COOKIE_SECURE: "false"
+  # /src is bind-mounted, so point Django staticfiles to the image-owned dist copy.
+  FRONTEND_DIST_DIR: "/opt/am-dashboard-dist"
+
+x-ldap-client-environment: &ldap-client-environment
+  AUTH_LDAP_SERVER_URI: "ldap://openldap:389"
+  AUTH_LDAP_USERNAME_SUFFIX: "_ldap"
+  AUTH_LDAP_BIND_DN: "uid=ldapadmin,dc=archivematica,dc=org"
+  AUTH_LDAP_BIND_PASSWORD: "test"
+  AUTH_LDAP_USER_SEARCH_BASE_DN: "ou=Users,dc=archivematica,dc=org"
+  AUTH_LDAP_USER_SEARCH_BASE_FILTERSTR: "(uid=%(user)s)"
+  AUTH_LDAP_GROUP_SEARCH_BASE_DN: "ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_GROUP_SEARCH_FILTERSTR: "(objectClass=groupOfNames)"
+  AUTH_LDAP_GROUP_IS_ACTIVE: "cn=enabled,ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_GROUP_IS_STAFF: "cn=administrators,ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_GROUP_IS_SUPERUSER: "cn=administrators,ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_REQUIRE_GROUP: "cn=enabled,ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_DENY_GROUP: "cn=disabled,ou=Groups,dc=archivematica,dc=org"
+  AUTH_LDAP_START_TLS: "false"
+  AUTH_LDAP_PROTOCOL_VERSION: "3"
+
+configs:
+  keycloak-healthcheck:
+    # The Keycloak image ships no curl or wget, so use bash's /dev/tcp. Gate on
+    # the OIDC discovery document of every realm the tests log in to, which is
+    # only served once `--import-realm` has finished.
+    content: |
+      for realm in demo secondary shibboleth; do
+        exec 3<>/dev/tcp/127.0.0.1/8080 &&
+        printf 'GET /realms/%s/.well-known/openid-configuration HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' "$$realm" >&3 &&
+        head -n 1 <&3 | grep -q ' 200 ' || exit 1
+      done
+
+  openldap-healthcheck:
+    # Health check script for the openldap service. Docker runs it with the
+    # container environment, so it binds with the LDAP_INIT_* credentials set
+    # on the service.
+    content: |
+      # Fails until slapd accepts connections and the entrypoint has created
+      # the organization entry.
+      exec ldapsearch -x -H ldap://127.0.0.1:389 \
+        -D "$$LDAP_INIT_ROOT_USER_DN" -w "$$LDAP_INIT_ROOT_USER_PW" \
+        -b "$$LDAP_INIT_ORG_DN" -s base '(objectClass=*)' dn
+
 services:
 
   mysql:
-    image: "percona/percona-server:8.4.10-10"
+    image: "percona/percona-server:8.4.11-11.1"
     command: "--character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci"
     environment:
       MYSQL_ROOT_PASSWORD: "root"
@@ -30,31 +92,14 @@ services:
         TARGET: "archivematica-dashboard-integration-tests"
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
-        UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
+        UBUNTU_VERSION: ${UBUNTU_VERSION:-26.04}
         PYTHON_VERSION: ${PYTHON_VERSION:-}
     entrypoint: ""
     working_dir: "/src"
     command: ["pytest", "--browser", "firefox", "/src/tests/integration/"]
     hostname: "archivematica-dashboard"
     environment:
-      PYTEST_ADDOPTS: ${PYTEST_ADDOPTS:-}
-      RUN_INTEGRATION_TESTS: "true"
-      DJANGO_LIVE_TEST_SERVER_ADDRESS: "archivematica-dashboard:8000"
-      DJANGO_ALLOW_ASYNC_UNSAFE: true
-      FORWARDED_ALLOW_IPS: "*"
-      AM_GUNICORN_ACCESSLOG: "/dev/null"
-      DJANGO_SETTINGS_MODULE: "archivematica.dashboard.settings.testmysql"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_GEARMAN_SERVER: "gearmand:4730"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_ELASTICSEARCH_SERVER: "elasticsearch:9200"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_PROMETHEUS_ENABLED: "1"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_USER: "archivematica"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD: "demo"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_HOST: "mysql"
-      ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE: "MCP"
-      ARCHIVEMATICA_DASHBOARD_SEARCH_ENABLED: "${AM_SEARCH_ENABLED:-true}"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SECURE: "false"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_SESSION_COOKIE_SAMESITE: "Lax"
-      ARCHIVEMATICA_DASHBOARD_DASHBOARD_CSRF_COOKIE_SECURE: "false"
+      <<: *dashboard-environment
       ARCHIVEMATICA_DASHBOARD_OIDC_AUTHENTICATION: "true"
       OIDC_USE_PKCE: "true"
       OIDC_PKCE_CODE_CHALLENGE_METHOD: "S256"
@@ -86,19 +131,74 @@ services:
       OIDC_ACCESS_ATTRIBUTE_MAP_SECONDARY: >
         {"given_name": "first_name", "family_name": "last_name", "realm_access": "realm_access"}
       OIDC_RP_SIGN_ALGO: "RS256"
-      # /src is bind-mounted, so point Django staticfiles to the image-owned dist copy.
-      FRONTEND_DIST_DIR: "/opt/am-dashboard-dist"
     volumes:
       - "../../:/src"
     depends_on:
       mysql:
         condition: service_healthy
-    links:
-      - "mysql"
-      - "keycloak"
+      keycloak:
+        condition: service_healthy
+
+  archivematica-dashboard-cas:
+    image: "archivematica-dashboard-integration-tests:latest"
+    entrypoint: ""
+    working_dir: "/src"
+    command: ["pytest", "--browser", "firefox", "/src/tests/integration/test_cas_auth.py"]
+    hostname: "archivematica-dashboard"
+    environment:
+      <<: *dashboard-environment
+      ARCHIVEMATICA_DASHBOARD_DASHBOARD_CAS_AUTHENTICATION: "true"
+      AUTH_CAS_SERVER_URL: "http://cas:8080/cas/"
+      AUTH_CAS_PROTOCOL_VERSION: "3"
+    volumes:
+      - "../../:/src"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      cas:
+        condition: service_healthy
+
+  archivematica-dashboard-ldap:
+    image: "archivematica-dashboard-integration-tests:latest"
+    entrypoint: ""
+    working_dir: "/src"
+    command: ["pytest", "--browser", "firefox", "/src/tests/integration/test_ldap_auth.py"]
+    hostname: "archivematica-dashboard"
+    environment:
+      <<: [*dashboard-environment, *ldap-client-environment]
+      ARCHIVEMATICA_DASHBOARD_DASHBOARD_LDAP_AUTHENTICATION: "true"
+    volumes:
+      - "../../:/src"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+
+  archivematica-dashboard-shibboleth:
+    image: "archivematica-dashboard-integration-tests:latest"
+    entrypoint: ""
+    working_dir: "/src"
+    command: ["pytest", "--browser", "firefox", "/src/tests/integration/test_shibboleth_auth.py"]
+    hostname: "archivematica-dashboard"
+    environment:
+      <<: *dashboard-environment
+      ARCHIVEMATICA_DASHBOARD_DASHBOARD_SHIBBOLETH_AUTHENTICATION: "true"
+    volumes:
+      - "../../:/src"
+    networks:
+      default:
+        aliases:
+          # The service provider proxies to the live test server by this name.
+          - archivematica-dashboard
+    depends_on:
+      mysql:
+        condition: service_healthy
+      shibboleth-sp:
+        condition: service_healthy
 
   keycloak:
-    image: "quay.io/keycloak/keycloak:26.7.0-1"
+    image: "quay.io/keycloak/keycloak:26.7.4-0"
     command: ["start-dev", "--import-realm"]
     restart: "unless-stopped"
     environment:
@@ -110,3 +210,99 @@ services:
       - 8080:8080
     volumes:
       - "./etc/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"
+      - "./etc/keycloak/shibboleth-realm.json:/opt/keycloak/data/import/shibboleth-realm.json:ro"
+    configs:
+      - source: keycloak-healthcheck
+        target: /usr/local/bin/keycloak-healthcheck
+    healthcheck:
+      test: ["CMD", "bash", "/usr/local/bin/keycloak-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  shibboleth-sp:
+    image: "archivematica-shibboleth-sp"
+    build:
+      context: "../../hack/etc/shibboleth"
+    environment:
+      # The browser and the service provider both reach Keycloak by its
+      # service name inside the Compose network, so one URL serves as the
+      # identity provider entity ID and as the metadata source.
+      SHIBBOLETH_IDP_URL: "http://keycloak:8080/realms/shibboleth"
+      SHIBBOLETH_IDP_METADATA_URL: "http://keycloak:8080/realms/shibboleth/protocol/saml/descriptor"
+    volumes:
+      - "../../hack/etc/shibboleth/shibboleth2.xml:/etc/shibboleth-templates/shibboleth2.xml:ro"
+      - "../../hack/etc/shibboleth/attribute-map-archivematica.xml:/etc/shibboleth/attribute-map-archivematica.xml:ro"
+      - "../../hack/etc/shibboleth/attribute-policy.xml:/etc/shibboleth/attribute-policy.xml:ro"
+      - "../../hack/etc/shibboleth/apache/archivematica.conf:/etc/apache2/sites-enabled/archivematica.conf:ro"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - --max-time
+        - "2"
+        - http://127.0.0.1/Shibboleth.sso/Status
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  cas:
+    image: "archivematica-cas"
+    build:
+      context: "../../hack/etc/cas"
+      args:
+        # Head of the cas-overlay-template 7.3 branch (CAS 7.3.8).
+        CAS_OVERLAY_COMMIT: "${CAS_OVERLAY_COMMIT:-b244d192d9462068fc24625a75ebe19ed6fc34cd}"
+    volumes:
+      - "./etc/cas/config:/etc/cas/config:ro"
+      - "./etc/cas/services:/etc/cas/services:ro"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - --max-time
+        - "2"
+        - http://127.0.0.1:8080/cas/login
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  openldap:
+    # Upstream publishes versioned tags, but may rebuild them to pick up
+    # base-image security updates. Keep the version tag for readability and
+    # pin the exact build by digest; Dependabot keeps both up to date.
+    image: "vegardit/openldap:2.6.10@sha256:b81f6c360830b21b9e6d8878563e3e11bd81e243693c83fa371efeee34556ce9"
+    environment:
+      LDAP_INIT_ORG_DN: "dc=archivematica,dc=org"
+      LDAP_INIT_ORG_NAME: "Archivematica integration tests"
+      LDAP_INIT_ORG_ATTR_O: "Archivematica"
+      LDAP_INIT_ROOT_USER_DN: "uid=ldapadmin,dc=archivematica,dc=org"
+      LDAP_INIT_ROOT_USER_PW: "test"
+      # The image's default password policy requires eight characters and
+      # would reject the shared four-character test password in the LDIF.
+      LDAP_INIT_PPOLICY_PW_MIN_LENGTH: "4"
+      LDAP_TLS_ENABLED: "false"
+      LDAP_LDAPS_ENABLED: "false"
+    volumes:
+      - "../../hack/etc/ldap/init_org_entries.ldif:/opt/ldifs/init_org_entries.ldif:ro"
+    configs:
+      - source: openldap-healthcheck
+        target: /usr/local/bin/openldap-healthcheck
+    healthcheck:
+      test: ["CMD", "sh", "/usr/local/bin/openldap-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s

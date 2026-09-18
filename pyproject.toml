@@ -62,7 +62,6 @@ dependencies = [
 dev = [
   "coverage[toml]",
   "django-stubs[compatible-mypy]",
-  "mockldap @ git+https://github.com/artefactual-labs/mockldap@v0.3.1",
   "playwright",
   "pre-commit",
   "pytest",
@@ -98,6 +97,10 @@ DJANGO_SETTINGS_MODULE="settings.test"
 norecursedirs = ".svn _build tmp* node_modules bower_components share .tox .venv"
 
 [tool.coverage.run]
+# The source path is resolved against the current directory. tox runs pytest
+# from the tests directories, so it exports COVERAGE_SOURCE_DIR (see setenv
+# below); the default works when running pytest from the repository root.
+source = ["${COVERAGE_SOURCE_DIR-src/archivematica}"]
 omit = [
     "**/src/archivematica/archivematicaCommon/externals/*",
     "**/migrations/*",
@@ -105,13 +108,6 @@ omit = [
     "**/tests/*",
     "**/wsgi.py",
     "**/manage.py",
-]
-include = [
-    "**/src/archivematica/archivematicaCommon/*",
-    "**/src/archivematica/dashboard/*",
-    "**/src/archivematica/MCPClient/*",
-    "**/src/archivematica/MCPClient/clientScripts/*",
-    "**/src/archivematica/MCPServer/*",
 ]
 branch = true
 
@@ -169,6 +165,7 @@ ignore_errors = true
 module = [
     "archivematica.archivematicaCommon.transfer_source_retrieval",
     "archivematica.archivematicaCommon.executeOrRunSubProcess",
+    "archivematica.dashboard.main.management.commands.purge_transient_processing_data",
     "archivematica.MCPClient.client.*",
     "archivematica.MCPClient.clientScripts.characterize_file",
     "archivematica.MCPClient.clientScripts.has_packages",
@@ -182,13 +179,18 @@ module = [
     "archivematica.search.service",
     "tests.archivematicaCommon.test_execute_functions",
     "tests.conftest",
+    "tests.dashboard.components.accounts.test_backends",
+    "tests.dashboard.components.accounts.test_signals",
     "tests.dashboard.components.accounts.test_views",
     "tests.dashboard.components.administration.test_administration",
     "tests.dashboard.fpr.test_command_get_fpr_changes",
     "tests.dashboard.fpr.test_command_import_pronom_ids",
     "tests.dashboard.fpr.test_views",
     "tests.dashboard.test_oidc",
+    "tests.dashboard.test_settings",
+    "tests.integration.test_ldap_auth",
     "tests.integration.test_oidc_auth",
+    "tests.integration.test_shibboleth_auth",
     "tests.MCPClient.conftest",
     "tests.MCPClient.test_characterize_file",
     "tests.MCPClient.test_create_mets_v2",
@@ -236,6 +238,9 @@ legacy_tox_ini = """
         DJANGO_SETTINGS_MODULE = {env:DJANGO_SETTINGS_MODULE:settings.test}
         PYTEST_ADDOPTS = {env:PYTEST_ADDOPTS:}
         UV_CACHE_DIR = {temp_dir}/uv-cache
+        # Coverage: pytest runs from the tests directories (see changedir), so
+        # [tool.coverage.run] source needs an absolute path.
+        COVERAGE_SOURCE_DIR = {toxinidir}/src/archivematica
         # Storage Service
         STORAGE_SERVICE_ROOT = {toxinidir}/hack/submodules/archivematica-storage-service
         # TOXENV-specific

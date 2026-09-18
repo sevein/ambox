@@ -1,13 +1,13 @@
 ARG TARGET=archivematica-mcp-server
-ARG UBUNTU_VERSION=24.04
+ARG UBUNTU_VERSION=26.04
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 ARG NODE_VERSION=24
-ARG UV_VERSION=0.11.30
-ARG UV_DIGEST=sha256:93b61e21202b1dab861092748e46bbd6e0e41dd84f59b9174efd2353186e1b47
+ARG UV_VERSION=0.12.13
+ARG UV_DIGEST=sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6
 ARG PYTHON_INSTALL_DIR=/python
 ARG SELENIUM_DIR=/selenium
-ARG MEDIAAREA_VERSION=1.0-25
+ARG MEDIAAREA_VERSION=1.0-27
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
 # Pin the Docker tool image independently for reproducible builds.
@@ -95,7 +95,7 @@ RUN set -ex \
 	&& SELENIUM_CACHE=${SELENIUM_DIR}/cache \
 	&& SELENIUM_BIN=${SELENIUM_DIR}/bin \
 	&& mkdir -p $SELENIUM_CACHE $SELENIUM_BIN \
-	&& SELENIUM_MANAGER_DOWNLOAD_URL=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/SeleniumHQ/selenium_manager_artifacts/releases/latest | sed -e 's|/tag/\(.*\)|/download/\1/selenium-manager-linux|g') \
+	&& SELENIUM_MANAGER_DOWNLOAD_URL=$(curl -sL -o /dev/null -w '%{url_effective}' https://github.com/SeleniumHQ/selenium_manager_artifacts/releases/latest | sed -e 's|/tag/\(.*\)|/download/\1/selenium-manager-linux-x86_64|g') \
 	&& curl -o $SELENIUM_BIN/selenium-manager -L $SELENIUM_MANAGER_DOWNLOAD_URL \
 	&& chmod +x $SELENIUM_BIN/selenium-manager \
 	&& CHROME_OUTPUT=$($SELENIUM_BIN/selenium-manager --cache-path $SELENIUM_CACHE --browser chrome --output JSON) \
@@ -114,6 +114,7 @@ ARG GROUP_ID
 
 WORKDIR /src/src/archivematica/dashboard/frontend
 
+COPY --link src/archivematica/dashboard/frontend/.npmrc /src/src/archivematica/dashboard/frontend/.npmrc
 COPY --link src/archivematica/dashboard/frontend/package.json /src/src/archivematica/dashboard/frontend/package.json
 COPY --link src/archivematica/dashboard/frontend/package-lock.json /src/src/archivematica/dashboard/frontend/package-lock.json
 
