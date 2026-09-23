@@ -32,7 +32,13 @@ upload directory and default AIP and DIP storage locations, uploads the sample
 through SFTP, and checks that the stored AIP and DIP are readable from their
 mounted locations. The pytest-bdd scenario also checks that jobs and tasks were
 created and uses Playwright with Chromium to verify the transfer, virus scan,
-and ingest results in Dashboard.
+and ingest results in Dashboard. A separate bootstrap scenario lists Storage
+Service pipelines, spaces, locations, and packages through the API, checks that
+the registered pipeline matches Dashboard's `X-Archivematica-ID` response
+header, and verifies the configuration in the Storage Service UI. After ingest,
+the test checks that both packages are listed by the API under that pipeline
+and displayed in the Storage Service package table. These browser checks catch
+missing or broken frontend assets even when the APIs still work.
 `make verify` installs the matching Chromium build automatically. Set
 `AMBOX_SKIP_BUILD=1` to verify an existing `IMAGE:TAG`. On CI failures, browser
 traces and screenshots, recent API responses, and container logs are uploaded

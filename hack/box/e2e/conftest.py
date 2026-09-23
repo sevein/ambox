@@ -7,6 +7,7 @@ import pytest
 from clients import API
 from clients import Services
 from pages.dashboard import DashboardPage
+from pages.storage import StoragePage
 from runtime import CONTAINER_NAME
 from runtime import E2E_ROOT
 from runtime import assert_storage_mounts
@@ -18,7 +19,7 @@ from runtime import wait_for_dashboard
 from runtime import wait_for_sftp
 from state import Verification
 
-pytest_plugins = ("steps.archivematica", "steps.dashboard")
+pytest_plugins = ("steps.archivematica", "steps.dashboard", "steps.storage")
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -54,6 +55,8 @@ def ambox(pytestconfig: pytest.Config) -> Services:
         sftp_port=sftp_port,
         dashboard_user=os.getenv("AMBOX_DASHBOARD_USER", "test"),
         dashboard_password=os.getenv("AMBOX_DASHBOARD_PASSWORD", "test"),
+        storage_user=os.getenv("AMBOX_STORAGE_USER", "test"),
+        storage_password=os.getenv("AMBOX_STORAGE_PASSWORD", "test"),
         container_name=CONTAINER_NAME,
     )
 
@@ -73,3 +76,10 @@ def ambox(pytestconfig: pytest.Config) -> Services:
 @pytest.fixture
 def dashboard_page(page, ambox: Services) -> DashboardPage:
     return DashboardPage(page, ambox.dashboard_url)
+
+
+@pytest.fixture
+def storage_page(page, ambox: Services) -> StoragePage:
+    storage = StoragePage(page, ambox.storage.base_url)
+    storage.login(ambox.storage_user, ambox.storage_password)
+    return storage

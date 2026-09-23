@@ -344,6 +344,7 @@ def aip_and_dip_are_uploaded(ambox: Services, verification: Verification) -> Non
 
                 assert_package_readable(ambox, body, "AIP", AIP_STORE_ROOT)
                 assert_package_readable(ambox, dip, "DIP", DIP_STORE_ROOT)
+                verification.packages = [body, dip]
                 print(
                     f"aip_uuid={body['uuid']} aip_status={body['status']} "
                     f"aip_size={body.get('size')}"
