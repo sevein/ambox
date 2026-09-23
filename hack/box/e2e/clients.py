@@ -19,6 +19,7 @@ class ResponseRecord:
     path: str
     status: int
     body: Any
+    headers: dict[str, str]
 
 
 @dataclass
@@ -57,6 +58,9 @@ class API:
         with response:
             raw = response.read().decode("utf-8", errors="replace")
             status = response.status
+            response_headers = {
+                key.lower(): value for key, value in response.headers.items()
+            }
         try:
             body = json.loads(raw)
         except json.JSONDecodeError:
@@ -69,6 +73,7 @@ class API:
                 path=path,
                 status=status,
                 body=body,
+                headers=response_headers,
             )
         )
         return status, body
@@ -94,4 +99,6 @@ class Services:
     sftp_port: int
     dashboard_user: str
     dashboard_password: str
+    storage_user: str
+    storage_password: str
     container_name: str
