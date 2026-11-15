@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import patch
 
 import bagit
@@ -74,22 +75,23 @@ def test_get_bag_size_bag_missing_oxum(tmpdir):
         mock_os_path.getsize.assert_called()
 
 
-def test_package_name_from_path():
+def test_package_name_from_path() -> None:
     """Test that package_name_from_path returns expected results."""
+    package_uuid = uuid.uuid4()
     test_packages = [
         {
-            "current_path": "/dev/null/tar_gz_package-473a9398-0024-4804-81da-38946040c8af.tar.gz",
-            "package_name": "tar_gz_package-473a9398-0024-4804-81da-38946040c8af",
+            "current_path": f"/dev/null/tar_gz_package-{package_uuid}.tar.gz",
+            "package_name": f"tar_gz_package-{package_uuid}",
             "package_name_without_uuid": "tar_gz_package",
         },
         {
-            "current_path": "/dev/null/a.bz2.tricky.7z.package-473a9398-0024-4804-81da-38946040c8af.7z",
-            "package_name": "a.bz2.tricky.7z.package-473a9398-0024-4804-81da-38946040c8af",
+            "current_path": f"/dev/null/a.bz2.tricky.7z.package-{package_uuid}.7z",
+            "package_name": f"a.bz2.tricky.7z.package-{package_uuid}",
             "package_name_without_uuid": "a.bz2.tricky.7z.package",
         },
         {
-            "current_path": "/dev/null/uncompressed_package-3e0b3093-23ea-4937-9e2a-1fd806bb39b9",
-            "package_name": "uncompressed_package-3e0b3093-23ea-4937-9e2a-1fd806bb39b9",
+            "current_path": f"/dev/null/uncompressed_package-{package_uuid}",
+            "package_name": f"uncompressed_package-{package_uuid}",
             "package_name_without_uuid": "uncompressed_package",
         },
     ]
@@ -235,3 +237,53 @@ def test_get_oidc_secondary_providers_capitalizes_provider_names(
             "OIDC_ROLE_CLAIM_DEFAULT": "default",
         },
     }
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("yes", True),
+        ("On", True),
+        ("1", True),
+        ("false", False),
+        ("no", False),
+        ("0", False),
+        ("", False),
+    ],
+)
+def test_is_true(value: str, expected: bool) -> None:
+    assert am.is_true(value) is expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [("false", False), ("no", False), ("true", True), ("yes", True), ("1", True)],
+)
+def test_get_oidc_secondary_providers_reads_the_auto_create_user_setting(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: bool
+) -> None:
+    monkeypatch.setenv("OIDC_RP_CLIENT_ID_FOO", "foo-client-id")
+    monkeypatch.setenv("OIDC_RP_CLIENT_SECRET_FOO", "foo-client-secret")
+    monkeypatch.setenv("OIDC_AUTO_CREATE_USER_FOO", value)
+
+    providers = am.get_oidc_secondary_providers(
+        ["FOO"], {"given_name": "first_name", "family_name": "last_name"}
+    )
+
+    assert providers["FOO"]["OIDC_CREATE_USER"] is expected
+
+
+def test_get_oidc_secondary_providers_leaves_user_creation_to_the_global_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OIDC_RP_CLIENT_ID_FOO", "foo-client-id")
+    monkeypatch.setenv("OIDC_RP_CLIENT_SECRET_FOO", "foo-client-secret")
+    monkeypatch.delenv("OIDC_AUTO_CREATE_USER_FOO", raising=False)
+
+    providers = am.get_oidc_secondary_providers(
+        ["FOO"], {"given_name": "first_name", "family_name": "last_name"}
+    )
+
+    assert "OIDC_CREATE_USER" not in providers["FOO"]

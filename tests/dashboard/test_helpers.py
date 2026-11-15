@@ -1,7 +1,8 @@
+import io
 import json
+import uuid
 from unittest import mock
 
-import pytest
 import requests
 
 from archivematica.dashboard.components import helpers
@@ -23,15 +24,6 @@ SUCCESS = "success"
 MESSAGE = "message"
 
 
-@pytest.fixture
-def mets_hdr():
-    return """<?xml version='1.0' encoding='UTF-8'?>
-    <mets:mets xmlns:mets="http://www.loc.gov/METS/" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version1121/mets.xsd">
-        <mets:metsHdr CREATEDATE="2020-01-21T15:43:07"/>
-    </mets:mets>
-    """
-
-
 def setup_ptr_info(sip_uuid):
     pointer_url = (
         f"http://archivematica-storage-service:8000/api/v2/file/{sip_uuid}/pointer_file"
@@ -48,10 +40,8 @@ def get_streaming_response(streaming_content):
     return response_text
 
 
-def mets_stream(tmpdir, mets_hdr):
-    mets_stream = tmpdir.join("mets_file")
-    mets_stream.write(mets_hdr)
-    return mets_stream.open()
+def mets_stream(mets_hdr: str) -> io.BytesIO:
+    return io.BytesIO(mets_hdr.encode())
 
 
 @mock.patch(
@@ -63,7 +53,7 @@ def test_stream_mets_from_disconnected_storage(extract_file, get_setting):
     custom_error_message = "Error connecting to the storage service"
     extract_file.side_effect = requests.exceptions.ConnectionError(custom_error_message)
     response = helpers.stream_mets_from_storage_service(
-        transfer_name="mets_transfer", sip_uuid="11111111-1111-1111-1111-111111111111"
+        transfer_name="mets_transfer", sip_uuid=str(uuid.uuid4())
     )
     assert response[CONTENT_TYPE] == CONTENT_JSON
     err = json.loads(response.content)
@@ -84,7 +74,7 @@ def test_stream_mets_from_storage_no_file(extract_file, get_setting, tmp_path):
     mock_response.status_code = 500
     extract_file.return_value = mock_response
     response = helpers.stream_mets_from_storage_service(
-        transfer_name="mets_transfer", sip_uuid="22222222-2222-2222-2222-222222222222"
+        transfer_name="mets_transfer", sip_uuid=str(uuid.uuid4())
     )
     assert response[CONTENT_TYPE] == CONTENT_JSON
     err = json.loads(response.content)
@@ -98,13 +88,13 @@ def test_stream_mets_from_storage_no_file(extract_file, get_setting, tmp_path):
     return_value="http://storage-service-url/",
 )
 @mock.patch("amclient.AMClient.extract_file")
-def test_stream_mets_from_storage_success(extract_file, get_setting, mets_hdr, tmpdir):
-    sip_uuid = "33333333-3333-3333-3333-333333333333"
+def test_stream_mets_from_storage_success(extract_file, get_setting, mets_hdr):
+    sip_uuid = str(uuid.uuid4())
     mets_file = f"METS.{sip_uuid}.xml"
     mock_response = requests.Response()
     mock_response.headers = {CONTENT_DISPOSITION: f"attachment; filename={mets_file};"}
     mock_response.status_code = RESPONSE_200
-    mock_response.raw = mets_stream(tmpdir, mets_hdr)
+    mock_response.raw = mets_stream(mets_hdr)
     extract_file.return_value = mock_response
     response = helpers.stream_mets_from_storage_service(
         transfer_name="mets_transfer", sip_uuid=sip_uuid
@@ -120,7 +110,7 @@ def test_stream_mets_from_storage_success(extract_file, get_setting, mets_hdr, t
     return_value=mock.Mock(status_code=RESPONSE_503, spec=requests.Response),
 )
 def test_stream_pointer_from_storage_unsuccessful(get):
-    pointer_url = "http://archivematica-storage-service:8000/api/v2/file/44444444-4444-4444-4444-444444444444/pointer_file"
+    pointer_url = f"http://archivematica-storage-service:8000/api/v2/file/{uuid.uuid4()}/pointer_file"
     custom_error_message = "Unable to retrieve AIP pointer file from Storage Service"
     response = helpers.stream_file_from_storage_service(
         pointer_url, error_message=custom_error_message
@@ -133,8 +123,8 @@ def test_stream_pointer_from_storage_unsuccessful(get):
 
 
 @mock.patch("requests.get")
-def test_stream_pointer_from_storage_successful(get, tmpdir, mets_hdr):
-    sip_uuid = "55555555-5555-5555-5555-555555555555"
+def test_stream_pointer_from_storage_successful(get, mets_hdr):
+    sip_uuid = str(uuid.uuid4())
     mock_response = requests.Response()
     pointer_url, pointer_file, content_disposition = setup_ptr_info(sip_uuid)
     mock_response.headers = {
@@ -142,7 +132,7 @@ def test_stream_pointer_from_storage_successful(get, tmpdir, mets_hdr):
         CONTENT_DISPOSITION: content_disposition,
     }
     mock_response.status_code = RESPONSE_200
-    mock_response.raw = mets_stream(tmpdir, mets_hdr)
+    mock_response.raw = mets_stream(mets_hdr)
     get.return_value = mock_response
     response = helpers.stream_file_from_storage_service(pointer_url)
     assert response.status_code == RESPONSE_200
@@ -153,7 +143,7 @@ def test_stream_pointer_from_storage_successful(get, tmpdir, mets_hdr):
     # Create a new mock response object (the stream hasn't been consumed).
     mock_response = requests.Response()
     mock_response.status_code = RESPONSE_200
-    mock_response.raw = mets_stream(tmpdir, mets_hdr)
+    mock_response.raw = mets_stream(mets_hdr)
     get.return_value = mock_response
     # Make the request again, but ask to view in the browser, i.e. inline.
     response = helpers.stream_file_from_storage_service(pointer_url, preview_file=True)
@@ -163,13 +153,13 @@ def test_stream_pointer_from_storage_successful(get, tmpdir, mets_hdr):
 
 
 @mock.patch("requests.get")
-def test_stream_pointer_from_storage_no_content_type(get, tmpdir, mets_hdr):
-    sip_uuid = "66666666-6666-6666-6666-666666666666"
+def test_stream_pointer_from_storage_no_content_type(get, mets_hdr):
+    sip_uuid = str(uuid.uuid4())
     mock_response = requests.Response()
     pointer_url, pointer_file, content_disposition = setup_ptr_info(sip_uuid)
     mock_response.headers = {CONTENT_DISPOSITION: content_disposition}
     mock_response.status_code = RESPONSE_200
-    mock_response.raw = mets_stream(tmpdir, mets_hdr)
+    mock_response.raw = mets_stream(mets_hdr)
     get.return_value = mock_response
     response = helpers.stream_file_from_storage_service(pointer_url)
     assert response.status_code == RESPONSE_200

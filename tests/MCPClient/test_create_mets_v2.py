@@ -1,5 +1,4 @@
 import pathlib
-import uuid
 from contextlib import ExitStack as does_not_raise
 from unittest import mock
 
@@ -17,6 +16,7 @@ from archivematica.MCPClient.clientScripts.create_mets_v2 import (
     createDMDIDsFromCSVMetadata,
 )
 from archivematica.MCPClient.clientScripts.create_mets_v2 import main
+from tests.factories import FileFactory
 
 
 @mock.patch(
@@ -66,40 +66,33 @@ def empty_dir_path(objects_path: pathlib.Path) -> pathlib.Path:
 
 @pytest.fixture()
 def metadata_csv(
-    sip: SIP, sip_directory_path: pathlib.Path, objects_path: pathlib.Path
+    make_file: FileFactory,
+    sip: SIP,
+    sip_directory_path: pathlib.Path,
+    objects_path: pathlib.Path,
 ) -> File:
     (objects_path / "metadata").mkdir()
     metadata_csv = objects_path / "metadata" / "metadata.csv"
     metadata_csv.write_text("Filename,dc.title\nobjects/file1,File 1")
+    path = str(metadata_csv.relative_to(sip_directory_path))
 
-    originallocation = "".join(
-        [r"%transferDirectory%", str(metadata_csv.relative_to(sip_directory_path))],
-    )
-    currentlocation = "".join(
-        [r"%SIPDirectory%", str(metadata_csv.relative_to(sip_directory_path))],
-    )
-    file_obj = File.objects.create(
-        uuid=uuid.uuid4(),
+    return make_file(
+        path,
         sip=sip,
-        originallocation=originallocation.encode(),
-        currentlocation=currentlocation.encode(),
-        size=1024,
         filegrpuse="metadata",
+        originallocation=f"%transferDirectory%{path}".encode(),
+        size=1024,
         checksum="f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b",
         checksumtype="sha256",
     )
 
-    return file_obj
-
 
 @pytest.fixture()
-def sip_dublincore(sip: SIP) -> DublinCore:
-    MetadataAppliesToType.objects.get_or_create(
-        pk="3e48343d-e2d2-4956-aaa3-b54d26eb9761", description="SIP"
-    )
-
+def sip_dublincore(
+    sip: SIP, metadata_applies_to_types: dict[str, MetadataAppliesToType]
+) -> DublinCore:
     return DublinCore.objects.create(
-        metadataappliestotype_id=MetadataAppliesToType.SIP_TYPE,
+        metadataappliestotype=metadata_applies_to_types["sip"],
         metadataappliestoidentifier=str(sip.pk),
         title="Hello World Contents",
         is_part_of="23456",
@@ -144,7 +137,7 @@ def test_simple_mets(
         includeAmdSec=False,
         createNormativeStructmap=False,
     )
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     amdsecs = mets_xml.xpath(
         ".//mets:amdSec",
         namespaces=NSMAP,
@@ -182,7 +175,7 @@ def test_aip_mets_includes_dublincore(
         includeAmdSec=True,
         createNormativeStructmap=True,
     )
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     objects_div = mets_xml.xpath(
         ".//mets:div[@LABEL='objects']",
         namespaces=NSMAP,
@@ -221,7 +214,7 @@ def test_aip_mets_includes_dublincore_via_metadata_csv(
         includeAmdSec=True,
         createNormativeStructmap=True,
     )
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     file_div = mets_xml.xpath(
         ".//mets:div[@LABEL='file1']",
         namespaces=NSMAP,
@@ -257,7 +250,7 @@ def test_aip_mets_normative_directory_structure(
         includeAmdSec=True,
         createNormativeStructmap=True,
     )
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     normative_structmap = mets_xml.xpath(
         ".//mets:structMap[@LABEL='Normative Directory Structure']", namespaces=NSMAP
     )
@@ -382,7 +375,7 @@ def test_bag_metadata_is_recorded_in_a_amdsec(
         createNormativeStructmap=False,
     )
 
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     transfer_metadata = mets_xml.xpath(
         ".//mets:amdSec//transfer_metadata/*",
         namespaces=NSMAP,
@@ -405,11 +398,14 @@ def transfer_metadata_xml_path(
 
 @pytest.fixture()
 def transfer_metadata_xml(
-    sip: SIP, sip_directory_path: pathlib.Path, transfer_metadata_xml_path: pathlib.Path
+    make_file: FileFactory,
+    sip: SIP,
+    sip_directory_path: pathlib.Path,
+    transfer_metadata_xml_path: pathlib.Path,
 ) -> File:
-    return File.objects.create(
+    return make_file(
+        str(transfer_metadata_xml_path.relative_to(sip_directory_path)),
         sip=sip,
-        currentlocation=f"%SIPDirectory%{transfer_metadata_xml_path.relative_to(sip_directory_path)}".encode(),
         filegrpuse="metadata",
     )
 
@@ -438,7 +434,7 @@ def test_transfer_metadata_xml_is_recorded_in_a_amdsec(
         createNormativeStructmap=False,
     )
 
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     transfer_metadata = mets_xml.xpath(
         ".//mets:amdSec//mets:xmlData/*",
         namespaces=NSMAP,
@@ -463,11 +459,14 @@ def source_metadata_xml_path(
 
 @pytest.fixture()
 def source_metadata_xml(
-    sip: SIP, sip_directory_path: pathlib.Path, source_metadata_xml_path: pathlib.Path
+    make_file: FileFactory,
+    sip: SIP,
+    sip_directory_path: pathlib.Path,
+    source_metadata_xml_path: pathlib.Path,
 ) -> File:
-    return File.objects.create(
+    return make_file(
+        str(source_metadata_xml_path.relative_to(sip_directory_path)),
         sip=sip,
-        currentlocation=f"%SIPDirectory%{source_metadata_xml_path.relative_to(sip_directory_path)}".encode(),
         filegrpuse="metadata",
     )
 
@@ -493,7 +492,7 @@ def test_source_metadata_xml_is_recorded_in_a_amdsec(
         createNormativeStructmap=False,
     )
 
-    mets_xml = etree.parse(mets_path.open())
+    mets_xml = etree.parse(mets_path)
     transfer_metadata = mets_xml.xpath(
         ".//mets:amdSec//mets:mdRef",
         namespaces=NSMAP,

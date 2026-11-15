@@ -3,10 +3,13 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from io import StringIO
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from django.contrib.auth.models import User
 from django.utils import timezone
 from lxml import etree
 
@@ -27,7 +30,9 @@ from archivematica.MCPServer.server.packages import create_package
 from archivematica.MCPServer.server.queues import PackageQueue
 from archivematica.MCPServer.server.tasks import Task
 from archivematica.MCPServer.server.tasks import TaskBackend
+from archivematica.MCPServer.server.workflow import Workflow
 from archivematica.MCPServer.server.workflow import load as load_workflow
+from tests.factories import TransferFactory
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 INTEGRATION_TEST_PATH = os.path.join(FIXTURES_DIR, "workflow-integration-test.json")
@@ -141,9 +146,8 @@ def package_queue():
 
 
 @pytest.fixture
-def transfer(db):
-    transfer_obj = models.Transfer.objects.create(uuid=uuid.uuid4())
-    return Transfer("transfer_path", transfer_obj.uuid)
+def transfer(make_transfer: TransferFactory) -> Transfer:
+    return Transfer("transfer_path", make_transfer().uuid)
 
 
 @pytest.fixture
@@ -241,7 +245,7 @@ def test_workflow_integration(
         assert isinstance(job, FilesClientScriptJob)
         assert job.exit_code == 0
         assert len(tasks) == len(dummy_file_replacements)
-        for task, replacement in zip(tasks, dummy_file_replacements):
+        for task, replacement in zip(tasks, dummy_file_replacements, strict=True):
             assert task.arguments == '"{}"'.format(replacement[r"%fileUUID%"])
 
         # Next job in chain should be queued
@@ -360,15 +364,16 @@ def test_workflow_integration(
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.mysql
 @mock.patch("archivematica.MCPServer.server.jobs.client.get_task_backend")
 def test_transfer_source_retrieval_is_visible_and_continues_workflow(
-    get_task_backend,
-    admin_user,
-    wf,
-    retrieval_directories,
-    package_queue,
-    controlled_backend_factory,
-):
+    get_task_backend: mock.MagicMock,
+    admin_user: User,
+    wf: Workflow,
+    retrieval_directories: SimpleNamespace,
+    package_queue: PackageQueue,
+    controlled_backend_factory: Callable[..., ControlledBackend],
+) -> None:
     """A running retrieval is observable and resumes the type-specific chain."""
     final_path = retrieval_directories.processing / "TransferName"
 

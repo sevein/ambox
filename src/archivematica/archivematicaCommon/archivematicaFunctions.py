@@ -31,7 +31,6 @@ import re
 from collections.abc import Iterable
 from itertools import zip_longest
 from pathlib import Path
-from typing import Union
 from uuid import uuid4
 
 from amclient import AMClient
@@ -83,6 +82,11 @@ def get_setting(setting, default=""):
         return DashboardSetting.objects.get(name=setting).value
     except DashboardSetting.DoesNotExist:
         return default
+
+
+def is_true(value: str) -> bool:
+    """Whether a setting's text means true: ``true``, ``yes``, ``on`` or ``1``, in any case."""
+    return value.lower() in ("true", "yes", "on", "1")
 
 
 def get_dashboard_uuid():
@@ -529,7 +533,7 @@ def chunk_iterable(iterable, chunk_size=10, fillvalue=None):
     return zip_longest(*args, fillvalue=fillvalue)
 
 
-ProviderConfig = dict[str, Union[str, bool]]
+ProviderConfig = dict[str, str | bool]
 
 
 def get_oidc_secondary_providers(
@@ -555,13 +559,8 @@ def get_oidc_secondary_providers(
         user_endpoint = os.environ.get(f"OIDC_OP_USER_ENDPOINT_{provider_name}", "")
         jwks_endpoint = os.environ.get(f"OIDC_OP_JWKS_ENDPOINT_{provider_name}", "")
         logout_endpoint = os.environ.get(f"OIDC_OP_LOGOUT_ENDPOINT_{provider_name}", "")
-        set_roles_from_claims = os.environ.get(
-            f"OIDC_OP_SET_ROLES_FROM_CLAIMS_{provider_name}", ""
-        ).lower() in (
-            "true",
-            "yes",
-            "on",
-            "1",
+        set_roles_from_claims = is_true(
+            os.environ.get(f"OIDC_OP_SET_ROLES_FROM_CLAIMS_{provider_name}", "")
         )
         role_claim_path = os.environ.get(
             f"OIDC_OP_ROLE_CLAIM_PATH_{provider_name}", "realm_access.roles"
@@ -597,6 +596,11 @@ def get_oidc_secondary_providers(
                 "OIDC_ROLE_CLAIM_ADMIN": role_claim_admin,
                 "OIDC_ROLE_CLAIM_DEFAULT": role_claim_default,
             }
+            # The application's name for mozilla-django-oidc's OIDC_CREATE_USER;
+            # only a provider that sets it overrides the global setting.
+            create_user = os.environ.get(f"OIDC_AUTO_CREATE_USER_{provider_name}")
+            if create_user is not None:
+                provider_config["OIDC_CREATE_USER"] = is_true(create_user)
             providers[provider_name] = provider_config
 
     return providers
