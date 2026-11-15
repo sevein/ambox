@@ -1,5 +1,8 @@
 name: "Test ambox"
 
+# Branch/PR builds have job-level cancellation below. Candidate verification
+# follows its release caller and must not cancel another version's release.
+# jactionlint ignore=concurrency-limits
 on:
   pull_request:
   push:

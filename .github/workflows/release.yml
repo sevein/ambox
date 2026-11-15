@@ -124,9 +124,10 @@ jobs:
       - name: Install Copilot CLI
         id: install_copilot
         continue-on-error: true
+        working-directory: .github/actions/release
         env:
           COPILOT_AUTO_UPDATE: "false"
-        run: npm install --global @github/copilot@1.0.78
+        run: npm ci --ignore-scripts
       - name: Generate summaries with Copilot
         if: ${{ steps.install_copilot.outcome == 'success' }}
         continue-on-error: true
@@ -135,7 +136,8 @@ jobs:
           COPILOT_AUTO_UPDATE: "false"
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          copilot -s --no-ask-user --disable-builtin-mcps \
+          "$GITHUB_WORKSPACE/.github/actions/release/node_modules/.bin/copilot" \
+            -s --no-ask-user --disable-builtin-mcps \
             < prompt.md > copilot-summary.md
       - name: Compose release notes
         run: |
@@ -156,6 +158,8 @@ jobs:
           source=$(<"$notes_dir/source.txt")
           {
             printf '# Release notes preview\n\n'
+            # The backticks are literal Markdown, not command substitution.
+            # shellcheck disable=SC2016
             printf 'Summary source: `%s`\n\n' "$source"
             cat "$notes_dir/release-notes.md"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -170,7 +174,7 @@ jobs:
   image-build:
     timeout-minutes: 180
     name: "Build Docker images"
-    needs: [validate-version, seed-cache]
+    needs: [seed-cache]
     if: ${{ inputs.publish }}
     strategy:
       fail-fast: false
@@ -197,6 +201,8 @@ jobs:
         run: make -C hack/box sampledata-image
       - name: "Set up buildx"
         uses: "docker/setup-buildx-action@v4.4.1"
+        with:
+          cache-binary: false
       - name: "Derive platform pair"
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -209,7 +215,11 @@ jobs:
       - name: "Log in to Docker Hub"
         uses: docker/login-action@v4.6.0
         with:
+          # Keep the existing repository-secret release setup; environments
+          # require a separate credential migration and publication policy.
+          # jactionlint ignore=secrets-outside-env
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          # jactionlint ignore=secrets-outside-env
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: "Log in to GitHub Container Registry"
         uses: docker/login-action@v4.6.0
@@ -228,6 +238,9 @@ jobs:
             type=raw,value=${{ github.event.inputs.version }}
       - name: "Build and push by digest"
         id: build
+        # Reuse the release layer cache intentionally. Only manual publishing
+        # runs write this scope; pull-request builds do not export a GHA cache.
+        # jactionlint ignore=cache-poisoning
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
@@ -264,7 +277,7 @@ jobs:
       actions: read # Download workflow artifacts.
       contents: read
       packages: read # Pull the candidate image.
-    uses: ./.github/workflows/test.yml
+    uses: $/.github/workflows/test.yml
     with:
       image: ghcr.io/${{ github.repository_owner }}/ambox
       digest-artifact: digests-linux-amd64
@@ -288,7 +301,10 @@ jobs:
       - name: "Log in to Docker Hub"
         uses: docker/login-action@v4.6.0
         with:
+          # Keep the same repository credentials as the candidate image build.
+          # jactionlint ignore=secrets-outside-env
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          # jactionlint ignore=secrets-outside-env
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: "Log in to GitHub Container Registry"
         uses: docker/login-action@v4.6.0
@@ -386,4 +402,4 @@ jobs:
     permissions:
       contents: read
       packages: write # Publish images to GHCR.
-    uses: ./.github/workflows/seed-cache.yml
+    uses: $/.github/workflows/seed-cache.yml

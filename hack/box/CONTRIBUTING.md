@@ -97,10 +97,15 @@ gh workflow run release.yml --ref dev/ambox -f version=1.2.0-rc.1 -f publish=tru
 
 Run `jactionlint --strict-exit` to check workflows, composite actions, and the
 Dependabot configuration. The pedantic profile also fails on warnings and
-informational findings. Existing findings are recorded in
-`.github/jactionlint-baseline.json`; review them with
-`jactionlint --no-baseline --strict-exit` and reduce the baseline as they are
-resolved. CI runs the same check on pull requests and pushes to `dev/ambox`.
+informational findings. There is no baseline; intentional exceptions are
+documented beside the affected workflow lines with narrow ignore comments. CI
+runs the same check on pull requests and pushes to `dev/ambox`.
+
+The release-note Copilot CLI is pinned in `.github/actions/release/package.json`
+and its lockfile. After changing that dependency, regenerate the lockfile with
+`npm install --package-lock-only --ignore-scripts --min-release-age=7` from that
+directory. The workflow installs it with `npm ci --ignore-scripts` and keeps the
+deterministic release-note fallback if installation or summary generation fails.
 
 GitHub Actions dependencies are recorded in `.github/workflows/actions.lock`.
 After adding or updating an action, run `gh actions-lock` and commit the

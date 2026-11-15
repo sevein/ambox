@@ -1,6 +1,4 @@
 profile: pedantic
-# Existing workflow findings are tracked for follow-up; new findings fail CI.
-baseline: auto
 rules:
   # actions-lock verifies the pins in actions.lock.
   unpinned-uses: off

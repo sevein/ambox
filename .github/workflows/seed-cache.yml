@@ -1,5 +1,8 @@
 name: "Seed cache"
 
+# Release callers own cancellation. Independent manual runs may build seeds for
+# different revisions and must not cancel each other or a waiting release.
+# jactionlint ignore=concurrency-limits
 on:
   workflow_call:
   workflow_dispatch:
