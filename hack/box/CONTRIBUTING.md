@@ -102,7 +102,8 @@ documented beside the affected workflow lines with narrow ignore comments. CI
 runs the same check on pull requests and pushes to `dev/ambox`.
 
 The release-note Copilot CLI is pinned in `.github/actions/release/package.json`
-and its lockfile. After changing that dependency, regenerate the lockfile with
+and its lockfile, which Dependabot monitors. After changing that dependency
+manually, regenerate the lockfile with
 `npm install --package-lock-only --ignore-scripts --min-release-age=7` from that
 directory. The workflow installs it with `npm ci --ignore-scripts` and keeps the
 deterministic release-note fallback if installation or summary generation fails.
@@ -139,10 +140,11 @@ Review ambox-specific dependencies separately from upstream: check the pinned
 s6-overlay, SFTPGo, JHOVE, and other tool versions in `hack/box/Dockerfile`
 against their releases, including security and compatibility notes. Keep Node
 and uv aligned with upstream where practical. Review the locked dependencies in
-`hack/box/e2e/uv.lock` and the GitHub Actions used by the fork's workflows;
-Dependabot currently monitors only GitHub Actions. Update suitable dependencies
-in separate commits and record any deferred updates. Verify service startup and
-shutdown and the SFTP transfer and ingest flow with `make verify` after changes.
+`hack/box/e2e/uv.lock` and the GitHub Actions used by the fork's workflows.
+Dependabot monitors GitHub Actions and the release-note npm dependencies. Update
+suitable dependencies in separate commits and record any deferred updates.
+Verify service startup and shutdown and the SFTP transfer and ingest flow with
+`make verify` after changes.
 
 Use the existing `make verify` scenario and PR CI as the integration gate.
 Record any deferred manual verification in the handoff. Once publication is
