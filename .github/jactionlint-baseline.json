@@ -3,14 +3,6 @@
   "entries": [
     {
       "file": ".github/workflows/release.yml",
-      "rule": "self-repository",
-      "fingerprint": "081046efdaba18cd",
-      "context": "b98d9ef18dca9b15",
-      "occurrence": 0,
-      "message": "\"./.github/actions/validate-semver\" is looked up in the workspace at run time, where an earlier step can replace it. use the self-repository syntax \"$/.github/actions/validate-semver\" which always refers to the commit running the workflow"
-    },
-    {
-      "file": ".github/workflows/release.yml",
       "rule": "unlocked-install",
       "fingerprint": "0d7d767eb9f0d9db",
       "context": "014f95bb1bf5777f",
@@ -35,14 +27,6 @@
     },
     {
       "file": ".github/workflows/release.yml",
-      "rule": "deprecated-node-runtime",
-      "fingerprint": "70324d1bb270ecc9",
-      "context": "fdbe8b1f9d5b85e7",
-      "occurrence": 0,
-      "message": "action \"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\" (checked as \"actions/upload-artifact@v4\": the version comment \"# v4.6.2\" says so, and nothing verifies the comment) declares the Node.js runtime \"node20\" in its metadata, but Node.js 20 was removed from GitHub Actions on 2026-09-23, so the runner runs the action on Node.js 24 instead of the runtime it declares. update the action to \"actions/upload-artifact@v6\" or newer, which declares \"node24\""
-    },
-    {
-      "file": ".github/workflows/release.yml",
       "rule": "unused-needs",
       "fingerprint": "572e37b1901264e5",
       "context": "a44b8c66766ef86b",
@@ -52,8 +36,8 @@
     {
       "file": ".github/workflows/release.yml",
       "rule": "cache-poisoning",
-      "fingerprint": "ba28109ab52331ac",
-      "context": "1067b140fb5646ce",
+      "fingerprint": "4016f4c8010afd43",
+      "context": "d4684b0cbed9eb52",
       "occurrence": 0,
       "message": "docker/setup-buildx-action restores a cache although the job pushes an image, so a poisoned cache entry can end up in the published artifacts. set \"cache-binary: false\", or set \"cache-mode: none\" on the job"
     },
@@ -76,18 +60,10 @@
     {
       "file": ".github/workflows/release.yml",
       "rule": "cache-poisoning",
-      "fingerprint": "a8317f99131f8f82",
-      "context": "87ca4faffb1ed79b",
+      "fingerprint": "2487a60d14d5d1d3",
+      "context": "61ab2d2aee633191",
       "occurrence": 0,
       "message": "docker/build-push-action restores a cache although the job pushes an image, so a poisoned cache entry can end up in the published artifacts. remove the \"cache-from\" input, or set \"cache-mode: none\" on the job"
-    },
-    {
-      "file": ".github/workflows/release.yml",
-      "rule": "deprecated-node-runtime",
-      "fingerprint": "de713d9130db76c7",
-      "context": "e03e3639251dfe31",
-      "occurrence": 0,
-      "message": "action \"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\" (checked as \"actions/upload-artifact@v4\": the version comment \"# v4.6.2\" says so, and nothing verifies the comment) declares the Node.js runtime \"node20\" in its metadata, but Node.js 20 was removed from GitHub Actions on 2026-09-23, so the runner runs the action on Node.js 24 instead of the runtime it declares. update the action to \"actions/upload-artifact@v6\" or newer, which declares \"node24\""
     },
     {
       "file": ".github/workflows/release.yml",
@@ -116,14 +92,6 @@
     {
       "file": ".github/workflows/release.yml",
       "rule": "self-repository",
-      "fingerprint": "c6e25e57adeaa1ef",
-      "context": "ae014cddc831a4ac",
-      "occurrence": 0,
-      "message": "\"./.github/actions/release\" is looked up in the workspace at run time, where an earlier step can replace it. use the self-repository syntax \"$/.github/actions/release\" which always refers to the commit running the workflow"
-    },
-    {
-      "file": ".github/workflows/release.yml",
-      "rule": "self-repository",
       "fingerprint": "6360757003f5f260",
       "context": "84c9f15230bb4f30",
       "occurrence": 0,
@@ -139,30 +107,6 @@
     },
     {
       "file": ".github/workflows/test.yml",
-      "rule": "concurrency-limits",
-      "fingerprint": "c41f0955d93b4ce5",
-      "context": "081b2e27040f94d3",
-      "occurrence": 0,
-      "message": "workflow has no \"concurrency:\", so every run of it executes at the same time even when a newer run supersedes the older ones. add a top-level \"concurrency:\" with a \"group:\" and \"cancel-in-progress: true\". use a group per pull request such as \"${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}\", so that a new push cancels only the older runs of the same pull request and not the runs of the others"
-    },
-    {
-      "file": ".github/workflows/test.yml",
-      "rule": "deprecated-node-runtime",
-      "fingerprint": "73310f68dd6bb818",
-      "context": "35abfe20d0de902d",
-      "occurrence": 0,
-      "message": "action \"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\" (checked as \"actions/upload-artifact@v4\": the version comment \"# v4.6.2\" says so, and nothing verifies the comment) declares the Node.js runtime \"node20\" in its metadata, but Node.js 20 was removed from GitHub Actions on 2026-09-23, so the runner runs the action on Node.js 24 instead of the runtime it declares. update the action to \"actions/upload-artifact@v6\" or newer, which declares \"node24\""
-    },
-    {
-      "file": ".github/workflows/test.yml",
-      "rule": "deprecated-node-runtime",
-      "fingerprint": "e26c61d10be81069",
-      "context": "87ef70c7901632a4",
-      "occurrence": 0,
-      "message": "action \"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\" (checked as \"actions/upload-artifact@v4\": the version comment \"# v4.6.2\" says so, and nothing verifies the comment) declares the Node.js runtime \"node20\" in its metadata, but Node.js 20 was removed from GitHub Actions on 2026-09-23, so the runner runs the action on Node.js 24 instead of the runtime it declares. update the action to \"actions/upload-artifact@v6\" or newer, which declares \"node24\""
-    },
-    {
-      "file": ".github/workflows/validate-action-pinning.yml",
       "rule": "concurrency-limits",
       "fingerprint": "c41f0955d93b4ce5",
       "context": "081b2e27040f94d3",

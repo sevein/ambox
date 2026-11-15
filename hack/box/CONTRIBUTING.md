@@ -102,6 +102,12 @@ informational findings. Existing findings are recorded in
 `jactionlint --no-baseline --strict-exit` and reduce the baseline as they are
 resolved. CI runs the same check on pull requests and pushes to `dev/ambox`.
 
+GitHub Actions dependencies are recorded in `.github/workflows/actions.lock`.
+After adding or updating an action, run `gh actions-lock` and commit the
+generated lockfile. Run `gh actions-lock --verify` to check the lockfile against
+GitHub; CI runs this check alongside jactionlint. The lockfile replaces the
+previous inline SHA-pinning check.
+
 ## Upstream synchronization
 
 Start a fresh sync branch from updated `origin/dev/ambox`, fetch upstream
