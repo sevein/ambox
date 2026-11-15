@@ -4,13 +4,20 @@ on:
   workflow_call:
   workflow_dispatch:
 
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   seed-cache:
+    timeout-minutes: 180
     name: "Build seed cache"
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      packages: write
+      packages: write # Publish the seed cache to GHCR.
     steps:
       - name: "Check out repository"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
@@ -32,19 +39,21 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: "Check for existing multi-arch seed cache"
         id: seed-cache-check
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
-          tag="ghcr.io/${{ github.repository_owner }}/ambox-build-cache:seed-${AM_SEED_KEY}"
+          tag="ghcr.io/${REPOSITORY_OWNER}/ambox-build-cache:seed-${AM_SEED_KEY}"
           if ! inspect=$(docker manifest inspect "$tag" 2>/dev/null); then
             echo "exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if echo "$inspect" | grep -q '"architecture": "amd64"' && echo "$inspect" | grep -q '"architecture": "arm64"'; then
+          if grep -q '"architecture": "amd64"' <<< "$inspect" && grep -q '"architecture": "arm64"' <<< "$inspect"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
       - name: "Build and push seed cache image"
-        if: steps.seed-cache-check.outputs.exists != 'true'
+        if: ${{ steps.seed-cache-check.outputs.exists != 'true' }}
         env:
           SEED_CACHE_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/ambox-build-cache
         run: |

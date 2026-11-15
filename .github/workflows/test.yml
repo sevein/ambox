@@ -20,10 +20,15 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
+    timeout-minutes: 90
     name: Build and test image
-    if: inputs.image == ''
+    if: ${{ inputs.image == '' }}
     runs-on: ubuntu-24.04
     concurrency:
       group: test-ambox-${{ github.ref }}
@@ -56,7 +61,7 @@ jobs:
           AMBOX_SKIP_BUILD: "1"
         run: make -C hack/box verify
       - name: Upload end-to-end failure artifacts
-        if: failure()
+        if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
           name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}
@@ -65,13 +70,14 @@ jobs:
           retention-days: 7
 
   test-candidate:
+    timeout-minutes: 90
     name: Test release candidate
-    if: inputs.image != ''
+    if: ${{ inputs.image != '' }}
     runs-on: ubuntu-24.04
     permissions:
-      actions: read
+      actions: read # Download the digest artifact.
       contents: read
-      packages: read
+      packages: read # Pull the candidate image.
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,7 +130,7 @@ jobs:
           AMBOX_SKIP_BUILD: "1"
         run: make -C hack/box verify
       - name: Upload end-to-end failure artifacts
-        if: failure()
+        if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
           name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}

@@ -1,0 +1,3 @@
+profile: pedantic
+# Existing workflow findings are tracked for follow-up; new findings fail CI.
+baseline: auto

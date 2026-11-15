@@ -93,6 +93,15 @@ After review, publishing is a separate, explicitly authorized action:
 gh workflow run release.yml --ref dev/ambox -f version=1.2.0-rc.1 -f publish=true
 ```
 
+## GitHub Actions checks
+
+Run `jactionlint --strict-exit` to check workflows, composite actions, and the
+Dependabot configuration. The pedantic profile also fails on warnings and
+informational findings. Existing findings are recorded in
+`.github/jactionlint-baseline.json`; review them with
+`jactionlint --no-baseline --strict-exit` and reduce the baseline as they are
+resolved. CI runs the same check on pull requests and pushes to `dev/ambox`.
+
 ## Upstream synchronization
 
 Start a fresh sync branch from updated `origin/dev/ambox`, fetch upstream
