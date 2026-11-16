@@ -234,7 +234,7 @@ restart-am-services:  ## Restart Archivematica services: MCPServer, MCPClient, D
 	docker compose restart --no-deps archivematica-storage-service
 
 # Lock resolution needs the Python and Git tools included in this uv image.
-UV_IMAGE ?= ghcr.io/astral-sh/uv:0.11.30-python3.14-trixie@sha256:bf3b8020dab9acd0a9c2cb0ea4ab5c65167f2a1af513c6031f289ac268b3dd4f
+UV_IMAGE ?= ghcr.io/astral-sh/uv:0.13.7-python3.14-trixie@sha256:9335539f5fb873b1d0b0aa1885dcd2ce3cea8473d9c47c5f24ce2e00fd3a158f
 
 define am_uv
 	docker run \
@@ -385,6 +385,10 @@ test-all: start-mysql  ## Run all tests.
 	$(call run_toxenv,$(__TOXENVS_STORAGE_SERVICE),archivematica.storage_service.storage_service.settings.testmysql)
 
 __TOXENVS_ARCHIVEMATICA = archivematica
+# The tests run in the image, which has the MCPClient tools, against the mysql
+# service: fail the tests marked tool or mysql instead of skipping them, also
+# when PYTEST_ADDOPTS is given on the make command line.
+test-archivematica: override PYTEST_ADDOPTS += --require=mysql --require=tool
 test-archivematica: start-mysql  ## Run Archivematica tests in a single run.
 	$(call grant_all_on_dbs,$(__TEST_DBS_ARCHIVEMATICA))
 	$(call run_toxenv,$(__TOXENVS_ARCHIVEMATICA),archivematica.settings.testmysql)

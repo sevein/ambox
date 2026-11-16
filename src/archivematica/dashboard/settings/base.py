@@ -27,6 +27,7 @@ from django.utils.translation import gettext_lazy as _
 from archivematica.archivematicaCommon import email_settings
 from archivematica.archivematicaCommon.appconfig import Config
 from archivematica.archivematicaCommon.appconfig import process_search_enabled
+from archivematica.archivematicaCommon.archivematicaFunctions import is_true
 
 django_stubs_ext.monkeypatch()
 
@@ -148,11 +149,6 @@ CONFIG_MAPPING = {
         "option": "storage_service_client_quick_timeout",
         "type": "float",
     },
-    "agentarchives_client_timeout": {
-        "section": "Dashboard",
-        "option": "agentarchives_client_timeout",
-        "type": "float",
-    },
     "polling_interval": {
         "section": "Dashboard",
         "option": "polling_interval",
@@ -250,7 +246,6 @@ oidc_allow_local_authentication = True
 oidc_auto_create_user = True
 storage_service_client_timeout = 86400
 storage_service_client_quick_timeout = 5
-agentarchives_client_timeout = 300
 csp_enabled = False
 prometheus_enabled = False
 audit_log_middleware = False
@@ -618,7 +613,6 @@ STORAGE_SERVICE_CLIENT_TIMEOUT = config.get("storage_service_client_timeout")
 STORAGE_SERVICE_CLIENT_QUICK_TIMEOUT = config.get(
     "storage_service_client_quick_timeout"
 )
-AGENTARCHIVES_CLIENT_TIMEOUT = config.get("agentarchives_client_timeout")
 
 SITE_URL = config.get("site_url")
 
@@ -725,13 +719,8 @@ if OIDC_AUTHENTICATION:
         "archivematica.dashboard.middleware.common.OidcCaptureQueryParamMiddleware",
     )
 
-    OIDC_USE_SESSION_REFRESH_MIDDLEWARE = os.environ.get(
-        "OIDC_USE_SESSION_REFRESH_MIDDLEWARE", "false"
-    ).lower() in (
-        "true",
-        "yes",
-        "on",
-        "1",
+    OIDC_USE_SESSION_REFRESH_MIDDLEWARE = is_true(
+        os.environ.get("OIDC_USE_SESSION_REFRESH_MIDDLEWARE", "false")
     )
 
     if OIDC_USE_SESSION_REFRESH_MIDDLEWARE:

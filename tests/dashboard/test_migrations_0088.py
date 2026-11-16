@@ -1,31 +1,33 @@
+from collections.abc import Callable
+from datetime import UTC
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
 from django.core.exceptions import FieldDoesNotExist
+from django.db import connection
+from django.db.migrations.state import StateApps
 
 
 @pytest.mark.django_db(transaction=True)
-def test_0088_backfills_createdtime_microseconds(migrate_apps):
-    from django.db import connection
-
-    if connection.vendor != "mysql":
-        pytest.skip("MySQL-specific migration")
-
+@pytest.mark.mysql
+def test_0088_backfills_createdtime_microseconds(
+    migrate_apps: Callable[[tuple[str, str]], StateApps],
+) -> None:
     apps = migrate_apps(("main", "0086_remove_appraisal"))
     Job = apps.get_model("main", "Job")
 
     job_a = Job.objects.create(
-        createdtime=datetime(2020, 1, 1, 10, 0, 0),
+        createdtime=datetime(2020, 1, 1, 10, 0, 0, tzinfo=UTC),
         createdtimedec=Decimal("0.123456"),
     )
     job_b = Job.objects.create(
-        createdtime=datetime(2020, 1, 1, 10, 0, 0),
+        createdtime=datetime(2020, 1, 1, 10, 0, 0, tzinfo=UTC),
         createdtimedec=Decimal("0"),
     )
     job_c = Job.objects.create(
-        createdtime=datetime(2020, 1, 1, 10, 0, 0, 654321),
+        createdtime=datetime(2020, 1, 1, 10, 0, 0, 654321, tzinfo=UTC),
         createdtimedec=Decimal("0.123456"),
     )
 
@@ -59,23 +61,21 @@ def test_0088_backfills_createdtime_microseconds(migrate_apps):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_0088_preserves_timestamp_ordering(migrate_apps):
-    from django.db import connection
-
-    if connection.vendor != "mysql":
-        pytest.skip("MySQL-specific migration")
-
+@pytest.mark.mysql
+def test_0088_preserves_timestamp_ordering(
+    migrate_apps: Callable[[tuple[str, str]], StateApps],
+) -> None:
     apps = migrate_apps(("main", "0086_remove_appraisal"))
     Job = apps.get_model("main", "Job")
 
     job_a = Job.objects.create(
         jobuuid=UUID("00000000-0000-0000-0000-000000000002"),
-        createdtime=datetime(2020, 1, 1, 10, 0, 0),
+        createdtime=datetime(2020, 1, 1, 10, 0, 0, tzinfo=UTC),
         createdtimedec=Decimal("0.100000"),
     )
     job_b = Job.objects.create(
         jobuuid=UUID("00000000-0000-0000-0000-000000000001"),
-        createdtime=datetime(2020, 1, 1, 10, 0, 0),
+        createdtime=datetime(2020, 1, 1, 10, 0, 0, tzinfo=UTC),
         createdtimedec=Decimal("0.200000"),
     )
 

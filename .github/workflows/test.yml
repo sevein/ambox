@@ -1,5 +1,8 @@
 name: "Test ambox"
 
+# Branch/PR builds have job-level cancellation below. Candidate verification
+# follows its release caller and must not cancel another version's release.
+# jactionlint ignore=concurrency-limits
 on:
   pull_request:
   push:
@@ -20,17 +23,22 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
+    timeout-minutes: 90
     name: Build and test image
-    if: inputs.image == ''
+    if: ${{ inputs.image == '' }}
     runs-on: ubuntu-24.04
     concurrency:
       group: test-ambox-${{ github.ref }}
       cancel-in-progress: true
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Initialize Storage Service submodule
@@ -42,7 +50,7 @@ jobs:
           SEED_CACHE_IMAGE_REMOTE: ghcr.io/${{ github.repository_owner }}/ambox-build-cache
         run: make -C hack/box build
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
           cache-python: true
@@ -56,8 +64,8 @@ jobs:
           AMBOX_SKIP_BUILD: "1"
         run: make -C hack/box verify
       - name: Upload end-to-end failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}
           path: hack/box/e2e/output
@@ -65,18 +73,19 @@ jobs:
           retention-days: 7
 
   test-candidate:
+    timeout-minutes: 90
     name: Test release candidate
-    if: inputs.image != ''
+    if: ${{ inputs.image != '' }}
     runs-on: ubuntu-24.04
     permissions:
-      actions: read
+      actions: read # Download the digest artifact.
       contents: read
-      packages: read
+      packages: read # Pull the candidate image.
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
       - name: Download image digest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: ${{ inputs.digest-artifact }}
           path: ${{ runner.temp }}/digest
@@ -98,7 +107,7 @@ jobs:
           fi
           echo "IMAGE_DIGEST=sha256:$digest" >> "$GITHUB_ENV"
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -110,7 +119,7 @@ jobs:
           docker pull "$CANDIDATE_IMAGE@$IMAGE_DIGEST"
           docker tag "$CANDIDATE_IMAGE@$IMAGE_DIGEST" artefactual/ambox:test
       - name: Set up uv and Python
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
           cache-python: true
@@ -124,8 +133,8 @@ jobs:
           AMBOX_SKIP_BUILD: "1"
         run: make -C hack/box verify
       - name: Upload end-to-end failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ambox-e2e-${{ github.job }}-${{ github.run_attempt }}
           path: hack/box/e2e/output

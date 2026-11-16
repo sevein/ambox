@@ -2,12 +2,12 @@ ARG USER_ID=1000
 ARG GROUP_ID=1000
 
 ARG UBUNTU_VERSION=26.04
-ARG S6_OVERLAY_VERSION=3.2.1.0
+ARG S6_OVERLAY_VERSION=3.2.3.2
 ARG PYTHON_VERSION
-ARG UV_VERSION=0.12.13
-ARG UV_DIGEST=sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6
-ARG NODE_VERSION=24
-ARG SFTPGO_VERSION=2.7.0
+ARG UV_VERSION=0.13.7
+ARG UV_DIGEST=sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490
+ARG NODE_VERSION=26
+ARG SFTPGO_VERSION=2.7.6
 ARG MEDIAAREA_VERSION=1.0-27
 ARG JHOVE_VERSION=1.34.0-1~22.04
 
@@ -124,6 +124,12 @@ RUN --mount=type=cache,target=/home/archivematica/.cache/uv,sharing=locked,uid=$
 	&& cd /dependencies/storage-service \
 	&& UV_PROJECT_ENVIRONMENT=/venv-ss \
 		uv sync --locked --no-dev --no-install-project ${PYTHON_VERSION:+--python "$PYTHON_VERSION"}
+
+# Match upstream by removing pip from the managed interpreter and ensurepip.
+RUN set -ex \
+	&& BASE_PREFIX=$(/venv/bin/python -c 'import sys; print(sys.base_prefix)') \
+	&& uv pip uninstall --python "${BASE_PREFIX}/bin/python3" --break-system-packages pip \
+	&& rm -f "${BASE_PREFIX}"/lib/python3.*/ensurepip/_bundled/pip-*.whl
 
 # frontend-builder provides the dashboard frontend assets.
 #

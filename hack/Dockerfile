@@ -2,9 +2,9 @@ ARG TARGET=archivematica-mcp-server
 ARG UBUNTU_VERSION=26.04
 ARG USER_ID=1000
 ARG GROUP_ID=1000
-ARG NODE_VERSION=24
-ARG UV_VERSION=0.12.13
-ARG UV_DIGEST=sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6
+ARG NODE_VERSION=26
+ARG UV_VERSION=0.13.7
+ARG UV_DIGEST=sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490
 ARG PYTHON_INSTALL_DIR=/python
 ARG SELENIUM_DIR=/selenium
 ARG MEDIAAREA_VERSION=1.0-27
@@ -77,6 +77,14 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 		uv python install --no-bin; \
 		uv sync --locked --no-install-project; \
 	fi
+
+# The uv-managed interpreter ships with pip, but nothing in the image runs it:
+# the project virtual environment has no pip. Remove it and the pip wheel
+# bundled for ensurepip so their vendored packages are not part of the image.
+RUN set -ex \
+	&& BASE_PREFIX=$(python -c 'import sys; print(sys.base_prefix)') \
+	&& uv pip uninstall --python "${BASE_PREFIX}/bin/python3" --break-system-packages pip \
+	&& rm -f "${BASE_PREFIX}"/lib/python3.*/ensurepip/_bundled/pip-*.whl
 
 # -----------------------------------------------------------------------------
 

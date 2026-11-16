@@ -1,0 +1,4 @@
+profile: pedantic
+rules:
+  # actions-lock verifies the pins in actions.lock.
+  unpinned-uses: off
