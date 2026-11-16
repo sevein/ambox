@@ -35,7 +35,7 @@ jobs:
         run: |
           echo "AM_SEED_KEY=$(./hack/box/scripts/seed/key.sh)" >> "$GITHUB_ENV"
       - name: "Log in to GHCR"
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
